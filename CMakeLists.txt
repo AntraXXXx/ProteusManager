@@ -9,21 +9,21 @@ qt_add_executable(DataBaseManager
     WIN32 MACOSX_BUNDLE
     main.cpp
 
-    ui/mainwindow.ui
-    ui/databasecontroller.ui
-    ui/tablegenerator.ui
+    windows/mainwindow.ui
+    windows/tablegenerator.ui
+    windows/databasecontroller.ui
 
     windows/mainwindow.h
-    windows/mainwindow.cpp
-
-    windows/databasecontroller.h
-    windows/databasecontroller.cpp
-
     windows/tablegenerator.h
+    windows/databasecontroller.h
+
+    windows/mainwindow.cpp
     windows/tablegenerator.cpp
+    windows/databasecontroller.cpp
 
     utils/textfilemanager.h
     utils/textfilemanager.cpp
+
 )
 
 target_link_libraries(DataBaseManager
