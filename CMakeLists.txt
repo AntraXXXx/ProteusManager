@@ -21,8 +21,9 @@ qt_add_executable(DataBaseManager
     windows/tablegenerator.cpp
     windows/databasecontroller.cpp
 
-    utils/textfilemanager.h
     utils/textfilemanager.cpp
+
+    utils/textfilemanager.h
 
 )
 
