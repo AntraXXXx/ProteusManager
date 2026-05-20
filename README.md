@@ -51,6 +51,7 @@ The goal of the project is to reduce manual effort during database development a
 - CRUD code generation
 - SQL preview
 - AI-assisted database optimization
+- Monitoring and tracking of generated database structure changes
 
 ---
 
