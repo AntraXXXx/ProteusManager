@@ -12,9 +12,6 @@ public:
 
     bool writeFile(const QString& path,
                    const QString& content);
-
-    bool appendToFile(const QString& path,
-                      const QString& content);
 };
 
 

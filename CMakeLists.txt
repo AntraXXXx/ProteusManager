@@ -14,10 +14,12 @@ qt_add_executable(DataBaseManager
 
 
 
-    databaseController.ui
+    databasecontroller.ui
     textfilemanager.h
     textfilemanager.cpp
-    databaseController.h databaseController.cpp
+    databasecontroller.h databasecontroller.cpp
+    tablegenerator.ui
+    tablegenerator.h tablegenerator.cpp
 
 
 
