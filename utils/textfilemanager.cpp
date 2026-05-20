@@ -1,5 +1,4 @@
 #include "textfilemanager.h"
-
 #include <QFile>
 #include <QTextStream>
 

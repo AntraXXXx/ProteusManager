@@ -23,8 +23,12 @@ private slots:
 
     void on_pushButton_addclasses_clicked();
 
+    void on_pushButton_generate_clicked();
+
 private:
     Ui::Tablegenerator *ui;
+    QString m_databasePath;
+    QString m_classPath;
 };
 
 
