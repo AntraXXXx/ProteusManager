@@ -1,0 +1,32 @@
+#ifndef TABLEGENERATOR_H
+#define TABLEGENERATOR_H
+
+#include <QWidget>
+#include <QLineEdit>
+#include <QFileDialog>
+
+namespace Ui {
+class Tablegenerator;
+}
+
+class Tablegenerator : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit Tablegenerator(QWidget *parent = nullptr);
+      ~Tablegenerator();
+
+private slots:
+
+    void on_pushButton_adddatabasedir_clicked();
+
+    void on_pushButton_addclasses_clicked();
+
+private:
+    Ui::Tablegenerator *ui;
+};
+
+
+#endif
+
