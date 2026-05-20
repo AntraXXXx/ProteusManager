@@ -2,7 +2,8 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include "databaseController.h"
+#include "databasecontroller.h"
+#include "tablegenerator.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -23,6 +24,7 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
-    Databasecontroller *m_databaseController = nullptr;
+    DatabaseController *m_databaseController = nullptr;
+    Tablegenerator *m_tableGenerator = nullptr;
 };
 #endif // MAINWINDOW_H

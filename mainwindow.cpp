@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "databaseController.h"
+//#include "databasecontroller.h"
+#include "tablegenerator.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -16,13 +17,29 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_pushButton_2_clicked()
 {
-    if (!m_databaseController)
+// if (!m_databaseController)
+  //  {
+  //      m_databaseController = new DatabaseController();
+  //  }
+
+  //  m_databaseController->show();
+  //  m_databaseController->raise();
+  //  m_databaseController->activateWindow();
+
+
+    if (!m_tableGenerator)
     {
-        m_databaseController = new Databasecontroller();
+        m_tableGenerator = new Tablegenerator();
     }
 
-    m_databaseController->show();
-    m_databaseController->raise();
-    m_databaseController->activateWindow();
+    m_tableGenerator->show();
+    m_tableGenerator->raise();
+    m_tableGenerator->activateWindow();
+
+
+
 }
+
+
+
 
