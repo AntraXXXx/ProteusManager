@@ -64,6 +64,8 @@ vcpkg_installed/
 # debug information files
 *.dwo
 
+.qtcreator/
+
 # test output & cache
 Testing/
 .cache/
