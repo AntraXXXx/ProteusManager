@@ -20,11 +20,11 @@ public:
     ~MainWindow() override;
 
 private slots:
-    void on_pushButton_2_clicked();
+    void on_pushButton_SqlGenerator_clicked();
 
 private:
     Ui::MainWindow *ui;
     DatabaseController *m_databaseController = nullptr;
     Tablegenerator *m_tableGenerator = nullptr;
 };
-#endif // MAINWINDOW_H
+#endif
