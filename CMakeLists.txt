@@ -26,6 +26,11 @@ qt_add_executable(DataBaseManager
     utils/textfilemanager.h
     utils/classscanner.h utils/classscanner.cpp
 
+    utils/parsedclass.h
+    utils/parsedattribute.h
+    utils/classparser.h utils/classparser.cpp
+
+
 )
 
 target_link_libraries(DataBaseManager

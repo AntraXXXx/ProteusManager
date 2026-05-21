@@ -1,7 +1,8 @@
 #include "tablegenerator.h"
 #include "ui_tablegenerator.h"
-#include "../utils/textfilemanager.h"
+//#include "../utils/textfilemanager.h"
 #include "../utils/classscanner.h"
+#include "../utils/classparser.h"
 
 Tablegenerator::Tablegenerator(QWidget *parent)
     : QWidget(parent)
@@ -43,18 +44,30 @@ void Tablegenerator::on_pushButton_adddatabasedir_clicked()
 
 void Tablegenerator::on_pushButton_generate_clicked()
 {
-    TextFileManager fileManager;
-
- //   QString dataBaseContent =
-      //  fileManager.readFile(m_databasePath);
-
-   // QString classContent =
-      //  fileManager.readFile(m_classPath);
-
     ClassScanner scanner;
+    ClassParser parser;
 
-    QStringList files =
-        scanner.scanClassFiles(m_classPath);
+    QList<ScannedClassFile> files =
+        scanner.scanAndReadClassFiles(m_classPath);
+
+    for (const ScannedClassFile& file : files)
+    {
+        QList<ParsedClass> classes =
+            parser.parseCppClasses(file.content);
+
+        for (const ParsedClass& cls : classes)
+        {
+            qDebug() << "class:" << cls.name;
+
+            for (const ParsedAttribute& attribute : cls.attributes)
+            {
+                qDebug()
+                << "type:" << attribute.type
+                << "name:" << attribute.name
+                << "relationship:" << attribute.isRelation;
+            }
+        }
+    }
 
 }
 

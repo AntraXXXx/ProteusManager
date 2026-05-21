@@ -1,0 +1,4 @@
+#ifndef PARSEDCLASS_H
+#define PARSEDCLASS_H
+
+#endif // PARSEDCLASS_H
