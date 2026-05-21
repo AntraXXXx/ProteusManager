@@ -24,6 +24,7 @@ qt_add_executable(DataBaseManager
     utils/textfilemanager.cpp
 
     utils/textfilemanager.h
+    utils/classscanner.h utils/classscanner.cpp
 
 )
 

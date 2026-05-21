@@ -1,6 +1,7 @@
 #include "tablegenerator.h"
 #include "ui_tablegenerator.h"
 #include "../utils/textfilemanager.h"
+#include "../utils/classscanner.h"
 
 Tablegenerator::Tablegenerator(QWidget *parent)
     : QWidget(parent)
@@ -16,12 +17,22 @@ Tablegenerator::~Tablegenerator()
 
 void Tablegenerator::on_pushButton_addclasses_clicked()
 {
+    QString folderPath = QFileDialog::getExistingDirectory(this, "Select a folder");
+
+    if (!folderPath.isEmpty()) {
+        ui->lineEdit_classespath->setText(folderPath);
+        m_classPath = folderPath;
+    }
+}
+
+void Tablegenerator::on_pushButton_adddatabasedir_clicked()
+{
     m_databasePath =
         QFileDialog::getOpenFileName(
             this,
-            "Datenbank auswählen",
+            "Select a database",
             "",
-            "SQLite Database (*.db *.sqlite)"
+             "database (*.db *.sqlite)"
             );
 
     if (!m_databasePath.isEmpty())
@@ -30,29 +41,20 @@ void Tablegenerator::on_pushButton_addclasses_clicked()
     }
 }
 
-void Tablegenerator::on_pushButton_adddatabasedir_clicked()
-{
-    m_classPath =
-        QFileDialog::getOpenFileName(
-            this,
-            "Skript auswählen",
-            "",
-            "Skript (*.h *.cs)" // c++ and c#?
-            );
-
-    if (!m_classPath.isEmpty())
-    {
-        ui->lineEdit_databasepath->setText(m_classPath);
-    }
-}
 void Tablegenerator::on_pushButton_generate_clicked()
 {
     TextFileManager fileManager;
 
-    QString dataBaseContent =
-        fileManager.readFile(m_databasePath);
+ //   QString dataBaseContent =
+      //  fileManager.readFile(m_databasePath);
 
-    QString classContent =
-        fileManager.readFile(m_classPath);
+   // QString classContent =
+      //  fileManager.readFile(m_classPath);
+
+    ClassScanner scanner;
+
+    QStringList files =
+        scanner.scanClassFiles(m_classPath);
+
 }
 
