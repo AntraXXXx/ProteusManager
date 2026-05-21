@@ -15,17 +15,16 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-void MainWindow::on_pushButton_2_clicked()
+void MainWindow::on_pushButton_SqlGenerator_clicked()
 {
-// if (!m_databaseController)
-  //  {
-  //      m_databaseController = new DatabaseController();
-  //  }
+    // if (!m_databaseController)
+    //  {
+    //      m_databaseController = new DatabaseController();
+    //  }
 
-  //  m_databaseController->show();
-  //  m_databaseController->raise();
-  //  m_databaseController->activateWindow();
-
+    //  m_databaseController->show();
+    //  m_databaseController->raise();
+    //  m_databaseController->activateWindow();
 
     if (!m_tableGenerator)
     {
@@ -35,11 +34,4 @@ void MainWindow::on_pushButton_2_clicked()
     m_tableGenerator->show();
     m_tableGenerator->raise();
     m_tableGenerator->activateWindow();
-
-
-
 }
-
-
-
-
