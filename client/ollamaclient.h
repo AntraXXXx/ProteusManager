@@ -17,10 +17,13 @@ public:
 
     void checkConnection();
     void fetchModels();
+    void generateSql(const QString& model,
+                     const QString& prompt);
 
 signals:
     void connectionChecked(bool isRunning);
     void modelsFetched(const QStringList& models);
+    void responseReceived(const QString& response);
     void errorOccurred(const QString& errorMessage);
 
 private:

@@ -30,5 +30,6 @@ private:
     OllamaClient *m_ollamaClient;
     DatabaseController *m_databaseController = nullptr;
     Tablegenerator *m_tableGenerator = nullptr;
+    QString m_selectedModel;
 };
 #endif

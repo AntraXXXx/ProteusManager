@@ -33,6 +33,8 @@ MainWindow::MainWindow(QWidget *parent)
                 {
                     ui->comboBox_AiModell->addItem(model);
                 }
+
+               m_selectedModel = ui->comboBox_AiModell->currentText();
             });
 
 
@@ -60,6 +62,8 @@ void MainWindow::on_pushButton_SqlGenerator_clicked()
         m_tableGenerator = new Tablegenerator();
     }
 
+    m_tableGenerator->setSelectedModel(m_selectedModel);
+
     m_tableGenerator->show();
     m_tableGenerator->raise();
     m_tableGenerator->activateWindow();
@@ -67,6 +71,10 @@ void MainWindow::on_pushButton_SqlGenerator_clicked()
 
 void MainWindow::on_comboBox_AiModell_currentIndexChanged(int index)
 {
-        QString model =
-            ui->comboBox_AiModell->itemText(index);
+    m_selectedModel = ui->comboBox_AiModell->itemText(index);
+
+    if (m_tableGenerator)
+    {
+        m_tableGenerator->setSelectedModel(m_selectedModel);
+    }
 }
