@@ -7,6 +7,7 @@
 Tablegenerator::Tablegenerator(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::Tablegenerator)
+    , m_ollamaClient(new OllamaClient(this))
 {
     ui->setupUi(this);
 }
@@ -42,7 +43,7 @@ void Tablegenerator::on_pushButton_adddatabasedir_clicked()
     }
 }
 
-void Tablegenerator::on_pushButton_generate_clicked()
+void Tablegenerator::on_pushButton_generate_clicked() // Connect to client and return sql code
 {
     ClassScanner scanner;
     ClassParser parser;
@@ -69,5 +70,6 @@ void Tablegenerator::on_pushButton_generate_clicked()
         }
     }
 
+    m_ollamaClient->checkConnection();
 }
 

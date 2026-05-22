@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QLineEdit>
 #include <QFileDialog>
+#include "../client/ollamaclient.h"
 
 namespace Ui {
 class Tablegenerator;
@@ -29,6 +30,7 @@ private:
     Ui::Tablegenerator *ui;
     QString m_databasePath;
     QString m_classPath;
+    OllamaClient *m_ollamaClient;
 };
 
 
