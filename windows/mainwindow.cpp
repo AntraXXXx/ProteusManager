@@ -6,8 +6,37 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , m_ollamaClient(new OllamaClient(this))
 {
     ui->setupUi(this);
+
+    connect(m_ollamaClient,
+            &OllamaClient::modelsFetched,
+            this,
+            [this](const QStringList& models)
+            {
+                ui->comboBox_AiModell->clear();
+
+                if (models.isEmpty())
+                {
+                    ui->comboBox_AiModell
+                        ->addItem("No model is installed on the device");
+
+                    ui->pushButton_SqlGenerator->setEnabled(false);
+
+                    return;
+                }
+
+                ui->pushButton_SqlGenerator->setEnabled(true);
+
+                for (const QString& model : models)
+                {
+                    ui->comboBox_AiModell->addItem(model);
+                }
+            });
+
+
+    m_ollamaClient->fetchModels();
 }
 
 MainWindow::~MainWindow()
@@ -34,4 +63,10 @@ void MainWindow::on_pushButton_SqlGenerator_clicked()
     m_tableGenerator->show();
     m_tableGenerator->raise();
     m_tableGenerator->activateWindow();
+}
+
+void MainWindow::on_comboBox_AiModell_currentIndexChanged(int index)
+{
+        QString model =
+            ui->comboBox_AiModell->itemText(index);
 }
