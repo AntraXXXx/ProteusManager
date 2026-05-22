@@ -1,6 +1,5 @@
 #include "ollamaclient.h"
 #include <QNetworkAccessManager>
-#include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -62,36 +61,6 @@ void OllamaClient::fetchModels()
         }
 
         emit modelsFetched(models);
-
-        reply->deleteLater();
-    });
-}
-
-void OllamaClient::generateSql(const QString& model,
-                               const QString& prompt)
-{
-    QNetworkRequest request(QUrl("http://localhost:11434/api/generate"));
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-
-    QJsonObject body;
-    body["model"] = model;
-    body["prompt"] = prompt;
-    body["stream"] = false;
-
-    QNetworkReply *reply =
-        m_networkManager->post(request, QJsonDocument(body).toJson());
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
-        if (reply->error() != QNetworkReply::NoError) {
-            emit errorOccurred(reply->errorString());
-            reply->deleteLater();
-            return;
-        }
-
-        QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-        QString response = doc.object()["response"].toString();
-
-        emit responseReceived(response);
 
         reply->deleteLater();
     });
