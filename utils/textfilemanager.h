@@ -17,4 +17,4 @@ public:
 
 
 
-#endif // TEXTFILEMANAGER_H
+#endif

@@ -1,13 +1,64 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 //#include "databasecontroller.h"
-#include "tablegenerator.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , m_ollamaClient(new OllamaClient(this))
+    , m_dataBaseManager(new DatabaseManager())
 {
     ui->setupUi(this);
+
+    connect(m_ollamaClient,
+            &OllamaClient::modelsFetched,
+            this,
+            [this](const QStringList& models)
+            {
+                ui->comboBox_AiModell->clear();
+
+                if (models.isEmpty())
+                {
+                    ui->comboBox_AiModell
+                        ->addItem("No model is installed on the device");
+
+                    ui->pushButton_SqlGenerator->setEnabled(false);
+
+                    return;
+                }
+
+                ui->pushButton_SqlGenerator->setEnabled(true);
+
+                for (const QString& model : models)
+                {
+                    ui->comboBox_AiModell->addItem(model);
+                }
+
+               m_selectedModel = ui->comboBox_AiModell->currentText();
+            });
+
+
+    m_ollamaClient->fetchModels();
+
+    QSettings settings("DataBaseSettings","Proteus");
+
+    bool isLocal = settings.value("database/isLocalConnection",true).toBool();
+    ui->checkBox_isLocalDatabase->setChecked(isLocal);
+
+    ui->label_localDatabase->setHidden(!isLocal);
+    ui->lineEdit_localdatabasepath->setHidden(!isLocal);
+    ui->pushButton_adddatabasedir->setHidden(!isLocal);
+
+    // Online database
+    ui->label_DataBaseAddress->setHidden(isLocal);
+    ui->lineEdit_DataBaseAddress->setHidden(isLocal);
+    ui->label_HostName->setHidden(isLocal);
+    ui->lineEdit_HostName->setHidden(isLocal);
+    ui->label_Password->setHidden(isLocal);
+    ui->lineEdit_Password->setHidden(isLocal);
+
+    ui->pushButton_SqlGenerator->setHidden(true);
+     ui->pushButton_ConnectDB->setStyleSheet("background-color: red;");
 }
 
 MainWindow::~MainWindow()
@@ -31,7 +82,89 @@ void MainWindow::on_pushButton_SqlGenerator_clicked()
         m_tableGenerator = new Tablegenerator();
     }
 
+    m_tableGenerator->setSelectedModel(m_selectedModel);
+
     m_tableGenerator->show();
     m_tableGenerator->raise();
     m_tableGenerator->activateWindow();
 }
+
+void MainWindow::on_comboBox_AiModell_currentIndexChanged(int index)
+{
+    m_selectedModel = ui->comboBox_AiModell->itemText(index);
+
+    if (m_tableGenerator)
+    {
+        m_tableGenerator->setSelectedModel(m_selectedModel);
+    }
+}
+
+void MainWindow::on_checkBox_isLocalDatabase_checkStateChanged(const Qt::CheckState &arg1)
+{
+    ui->label_localDatabase->setHidden(!ui->checkBox_isLocalDatabase->isChecked());
+    ui->lineEdit_localdatabasepath->setHidden(!ui->checkBox_isLocalDatabase->isChecked());
+    ui->pushButton_adddatabasedir->setHidden(!ui->checkBox_isLocalDatabase->isChecked());
+
+    // Online database
+    ui->label_DataBaseAddress->setHidden(ui->checkBox_isLocalDatabase->isChecked());
+    ui->lineEdit_DataBaseAddress->setHidden(ui->checkBox_isLocalDatabase->isChecked());
+    ui->label_HostName->setHidden(ui->checkBox_isLocalDatabase->isChecked());
+    ui->lineEdit_HostName->setHidden(ui->checkBox_isLocalDatabase->isChecked());
+    ui->label_Password->setHidden(ui->checkBox_isLocalDatabase->isChecked());
+    ui->lineEdit_Password->setHidden(ui->checkBox_isLocalDatabase->isChecked());
+}
+
+void MainWindow::on_pushButton_adddatabasedir_clicked()
+{
+    QString databasePath =
+        QFileDialog::getOpenFileName(
+            this,
+            "Select a database",
+            "",
+            "Database (*.db *.sqlite)"
+            );
+
+    if (databasePath.isEmpty())
+        return;
+
+    m_dataBaseManager->setDatabasePath(databasePath);
+
+    ui->lineEdit_localdatabasepath->setText(databasePath);
+}
+
+
+
+void MainWindow::on_pushButton_ConnectDB_clicked()
+{
+//m_databasePath
+
+    QFileInfo fileInfo(ui->lineEdit_localdatabasepath->text());
+
+    QString connectionName = fileInfo.fileName();
+    QString filePath =  ui->lineEdit_localdatabasepath->text();
+
+   // ui->lineEdit_localdatabasepath
+    //    ->setText(connectionName);
+
+//bool connected = m_dataBaseManager->isConnected();
+   //    ui->pushButton_ConnectDB->setStyleSheet("background-color: red;");
+  //  if(connected){
+  //      ui->pushButton_SqlGenerator->setHidden(connected);
+ //   }
+    m_dataBaseManager->openDatabase(connectionName, filePath);
+
+    if(m_dataBaseManager->isConnected())
+    {
+        ui->pushButton_ConnectDB->setStyleSheet("background-color: green;");
+        ui->pushButton_ConnectDB->setText("Connected");
+        ui->pushButton_ConnectDB->setEnabled(false);
+        ui->pushButton_SqlGenerator->setHidden(false);
+    }
+    else
+    {
+        ui->pushButton_ConnectDB->setEnabled(true);
+        ui->pushButton_ConnectDB->setStyleSheet("background-color: red;");
+        ui->pushButton_SqlGenerator->setHidden(true);
+    }
+}
+

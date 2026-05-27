@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.19)
 project(DataBaseManager LANGUAGES CXX)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets)
+find_package(Qt6 REQUIRED COMPONENTS
+    Widgets
+    Network
+    Sql
+)
 
 qt_standard_project_setup()
 
@@ -29,6 +34,10 @@ qt_add_executable(DataBaseManager
     utils/parsedclass.h
     utils/parsedattribute.h
     utils/classparser.h utils/classparser.cpp
+    client/ollamaclient.h client/ollamaclient.cpp
+    database/databasemanager.h
+    database/databasemanager.cpp
+
 
 
 )
@@ -37,6 +46,8 @@ target_link_libraries(DataBaseManager
     PRIVATE
         Qt::Core
         Qt::Widgets
+        Qt::Network
+        Qt::Sql
 )
 
 install(TARGETS DataBaseManager
