@@ -32,22 +32,6 @@ void Tablegenerator::on_pushButton_addclasses_clicked()
     }
 }
 
-void Tablegenerator::on_pushButton_adddatabasedir_clicked()
-{
-    m_databasePath =
-        QFileDialog::getOpenFileName(
-            this,
-            "Select a database",
-            "",
-             "database (*.db *.sqlite)"
-            );
-
-    if (!m_databasePath.isEmpty())
-    {
-        ui->lineEdit_databasepath->setText(m_databasePath);
-    }
-}
-
 void Tablegenerator::on_pushButton_generate_clicked()
 {
     ClassScanner scanner;

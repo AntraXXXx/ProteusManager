@@ -6,32 +6,32 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>709</width>
-    <height>509</height>
+    <width>749</width>
+    <height>546</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QPushButton" name="pushButton">
+   <widget class="QPushButton" name="pushButton_Exit">
     <property name="geometry">
      <rect>
-      <x>520</x>
-      <y>360</y>
+      <x>590</x>
+      <y>410</y>
       <width>121</width>
       <height>71</height>
      </rect>
     </property>
     <property name="text">
-     <string>Placeholder</string>
+     <string>Exit</string>
     </property>
    </widget>
    <widget class="QPushButton" name="pushButton_SqlGenerator">
     <property name="geometry">
      <rect>
-      <x>100</x>
-      <y>360</y>
+      <x>240</x>
+      <y>410</y>
       <width>121</width>
       <height>71</height>
      </rect>
@@ -67,8 +67,8 @@
    <widget class="QLabel" name="label_CodeLanguae">
     <property name="geometry">
      <rect>
-      <x>90</x>
-      <y>80</y>
+      <x>100</x>
+      <y>50</y>
       <width>211</width>
       <height>61</height>
      </rect>
@@ -85,8 +85,8 @@
    <widget class="QLabel" name="label_AiModell">
     <property name="geometry">
      <rect>
-      <x>130</x>
-      <y>150</y>
+      <x>100</x>
+      <y>110</y>
       <width>201</width>
       <height>61</height>
      </rect>
@@ -104,8 +104,8 @@
     <property name="geometry">
      <rect>
       <x>260</x>
-      <y>100</y>
-      <width>381</width>
+      <y>70</y>
+      <width>451</width>
       <height>31</height>
      </rect>
     </property>
@@ -114,10 +114,167 @@
     <property name="geometry">
      <rect>
       <x>260</x>
-      <y>170</y>
-      <width>381</width>
+      <y>130</y>
+      <width>451</width>
       <height>31</height>
      </rect>
+    </property>
+   </widget>
+   <widget class="QCheckBox" name="checkBox_isLocalDatabase">
+    <property name="geometry">
+     <rect>
+      <x>260</x>
+      <y>160</y>
+      <width>91</width>
+      <height>61</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>16</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_CodeLanguae_2">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>160</y>
+      <width>151</width>
+      <height>61</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>16</pointsize>
+     </font>
+    </property>
+    <property name="text">
+     <string>Local database:</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_DataBaseAddress">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>220</y>
+      <width>161</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Online-Database:</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_Password">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>340</y>
+      <width>161</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Password:</string>
+    </property>
+   </widget>
+   <widget class="QLineEdit" name="lineEdit_HostName">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>300</y>
+      <width>611</width>
+      <height>31</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_HostName">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>280</y>
+      <width>161</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Host-Name:</string>
+    </property>
+   </widget>
+   <widget class="QLineEdit" name="lineEdit_Password">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>360</y>
+      <width>611</width>
+      <height>31</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QLineEdit" name="lineEdit_DataBaseAddress">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>240</y>
+      <width>611</width>
+      <height>31</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_localDatabase">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>220</y>
+      <width>161</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Local-Database-Path:</string>
+    </property>
+   </widget>
+   <widget class="QLineEdit" name="lineEdit_localdatabasepath">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>240</y>
+      <width>611</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton_adddatabasedir">
+    <property name="geometry">
+     <rect>
+      <x>50</x>
+      <y>240</y>
+      <width>41</width>
+      <height>31</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Add</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton_ConnectDB">
+    <property name="geometry">
+     <rect>
+      <x>100</x>
+      <y>410</y>
+      <width>121</width>
+      <height>71</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Connect DB</string>
     </property>
    </widget>
   </widget>
@@ -126,7 +283,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>709</width>
+     <width>749</width>
      <height>22</height>
     </rect>
    </property>
@@ -137,7 +294,6 @@
    </widget>
    <addaction name="menuDataBaseManagerHelper"/>
   </widget>
-  <widget class="QStatusBar" name="statusbar"/>
  </widget>
  <resources/>
  <connections/>
