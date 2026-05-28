@@ -12,6 +12,11 @@ OllamaClient::OllamaClient(QObject *parent)
 {
 }
 
+QString OllamaClient::getLastResponse() const
+{
+    return m_lastResponse;
+}
+
 void OllamaClient::checkConnection()
 {
     QNetworkRequest request(QUrl("http://localhost:11434/api/tags"));
@@ -70,8 +75,8 @@ void OllamaClient::fetchModels()
 void OllamaClient::generateSql(const QString& model,
                                const QString& prompt)
 {
-    qDebug() << "Selected model:" << model;
-    qDebug() << "Prompt:" << prompt;
+   // qDebug() << "Selected model:" << model;
+   // qDebug() << "Prompt:" << prompt;
 
     QNetworkRequest request(QUrl("http://localhost:11434/api/generate"));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
@@ -103,8 +108,8 @@ void OllamaClient::generateSql(const QString& model,
 
         QByteArray responseData = reply->readAll();
 
-        qDebug() << "Raw Response:";
-        qDebug() << responseData;
+      //  qDebug() << "Raw Response:";
+       // qDebug() << responseData;
 
         QJsonDocument doc =
             QJsonDocument::fromJson(responseData);
@@ -114,9 +119,10 @@ void OllamaClient::generateSql(const QString& model,
 
         qDebug() << "AI Response:";
         qDebug() << response;
-
+        m_lastResponse = "AI Response: /n" + response;
         emit responseReceived(response);
 
         reply->deleteLater();
     });
 }
+

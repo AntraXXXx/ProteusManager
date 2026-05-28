@@ -19,15 +19,17 @@ MainWindow::MainWindow(QWidget *parent)
 
                 if (models.isEmpty())
                 {
+
                     ui->comboBox_AiModell
                         ->addItem("No model is installed on the device");
 
                     ui->pushButton_SqlGenerator->setEnabled(false);
+                    ui->pushButton_ConnectDB->setEnabled(false);
 
                     return;
                 }
 
-                ui->pushButton_SqlGenerator->setEnabled(true);
+                ui->pushButton_SqlGenerator->setEnabled(false);
 
                 for (const QString& model : models)
                 {
@@ -39,6 +41,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 
     m_ollamaClient->fetchModels();
+
 
     QSettings settings("DataBaseSettings","Proteus");
 
@@ -57,7 +60,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->label_Password->setHidden(isLocal);
     ui->lineEdit_Password->setHidden(isLocal);
 
-    ui->pushButton_SqlGenerator->setHidden(true);
+    ui->pushButton_SqlGenerator->setEnabled(false);
      ui->pushButton_ConnectDB->setStyleSheet("background-color: red;");
 }
 
@@ -79,7 +82,7 @@ void MainWindow::on_pushButton_SqlGenerator_clicked()
 
     if (!m_tableGenerator)
     {
-        m_tableGenerator = new Tablegenerator();
+          m_tableGenerator = new Tablegenerator(m_dataBaseManager);
     }
 
     m_tableGenerator->setSelectedModel(m_selectedModel);
@@ -136,35 +139,29 @@ void MainWindow::on_pushButton_adddatabasedir_clicked()
 
 void MainWindow::on_pushButton_ConnectDB_clicked()
 {
-//m_databasePath
-
     QFileInfo fileInfo(ui->lineEdit_localdatabasepath->text());
 
     QString connectionName = fileInfo.fileName();
     QString filePath =  ui->lineEdit_localdatabasepath->text();
 
-   // ui->lineEdit_localdatabasepath
-    //    ->setText(connectionName);
-
-//bool connected = m_dataBaseManager->isConnected();
-   //    ui->pushButton_ConnectDB->setStyleSheet("background-color: red;");
-  //  if(connected){
-  //      ui->pushButton_SqlGenerator->setHidden(connected);
- //   }
-    m_dataBaseManager->openDatabase(connectionName, filePath);
-
-    if(m_dataBaseManager->isConnected())
+    if(!connectionName.isEmpty() && !filePath.isEmpty())
     {
-        ui->pushButton_ConnectDB->setStyleSheet("background-color: green;");
-        ui->pushButton_ConnectDB->setText("Connected");
-        ui->pushButton_ConnectDB->setEnabled(false);
-        ui->pushButton_SqlGenerator->setHidden(false);
-    }
-    else
-    {
-        ui->pushButton_ConnectDB->setEnabled(true);
-        ui->pushButton_ConnectDB->setStyleSheet("background-color: red;");
-        ui->pushButton_SqlGenerator->setHidden(true);
+        m_dataBaseManager->openDatabase(connectionName, filePath);
+
+        if(m_dataBaseManager->isConnected())
+        {
+            ui->pushButton_ConnectDB->setStyleSheet("background-color: green;");
+            ui->pushButton_ConnectDB->setText("Connected");
+            ui->pushButton_ConnectDB->setEnabled(false);
+            ui->pushButton_SqlGenerator->setEnabled(true);
+        }
+        else
+        {
+            ui->pushButton_ConnectDB->setEnabled(true);
+            ui->pushButton_ConnectDB->setStyleSheet("background-color: red;");
+            ui->pushButton_SqlGenerator->setEnabled(false);
+            return;
+        }
     }
 }
 
