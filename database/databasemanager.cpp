@@ -6,7 +6,8 @@
 
 #include <QDebug>
 
-bool DatabaseManager::openDatabase(QString& connectionName, QString& databasePath)
+bool DatabaseManager::openDatabase(QString& connectionName,
+                                   QString& databasePath)
 {
     QSqlDatabase db =
         QSqlDatabase::addDatabase(
@@ -14,48 +15,62 @@ bool DatabaseManager::openDatabase(QString& connectionName, QString& databasePat
             connectionName
             );
 
-    db.setDatabaseName(connectionName);
+    m_dataBaseConnectionName = connectionName;
 
-    if (!db.open())
+    db.setDatabaseName(databasePath);
+
+    if (!db.open() || connectionName.isEmpty() || databasePath.isEmpty())
     {
         qDebug() << "Database Error:"
                  << db.lastError().text();
-    // isConnected = false;
+
         setConnection(false);
         return false;
     }
-
     qDebug() << "Database connected";
-  //  isConnected = true;
+
     setConnection(true);
     return true;
 }
 
-bool DatabaseManager::executeQuery(QString& sql)
+QString DatabaseManager::getSqlConnectionName() const
+{
+    return m_dataBaseConnectionName;
+}
+
+bool DatabaseManager::executeQuery(const QString& executeSqlCommand)
 {
     QSqlDatabase db =
-        QSqlDatabase::database(m_databasePath);
+        QSqlDatabase::database(m_dataBaseConnectionName);
 
     if (!db.isOpen())
     {
-        qDebug() << "Database not open";
+        qDebug() << "Database is not open";
+        qDebug() << "Connection name:" << m_dataBaseConnectionName;
         return false;
     }
 
-    QSqlQuery query(db);
+    QStringList queries =
+        executeSqlCommand.split(";", Qt::SkipEmptyParts);
 
-    if (!query.exec(sql))
+    for (QString queryString : queries)
     {
-        qDebug() << "SQL Error:"
-                 << query.lastError().text();
+        queryString = queryString.trimmed();
 
-        qDebug() << "SQL:"
-                 << sql;
+        if (queryString.isEmpty())
+            continue;
 
-        return false;
+        QSqlQuery query(db);
+
+        if (!query.exec(queryString))
+        {
+            qDebug() << "SQL Error:" << query.lastError().text();
+            qDebug() << "Failed Query:" << queryString;
+            return false;
+        }
+
+        qDebug() << "Executed:" << queryString;
     }
-
-    qDebug() << "SQL executed successfully";
 
     return true;
 }
@@ -68,14 +83,18 @@ void DatabaseManager::setDatabasePath(const QString& path)
 void DatabaseManager::setConnection(const bool isConnecting)
 {
     m_isConnected = isConnecting;
-    isConnected();
 }
 
-bool DatabaseManager::isConnected()
+bool DatabaseManager::isConnected() const
 {
     return m_isConnected;
 }
 
+bool DatabaseManager::isValidSql(
+    const QString& sql)
+{
+    QString upperSql = sql.toUpper();
 
-
+    return upperSql.contains("CREATE TABLE");
+}
 
