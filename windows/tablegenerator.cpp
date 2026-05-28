@@ -4,12 +4,43 @@
 #include "../utils/classscanner.h"
 #include "../utils/classparser.h"
 
-Tablegenerator::Tablegenerator(QWidget *parent)
+Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
+                               QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::Tablegenerator)
     , m_ollamaClient(new OllamaClient(this))
+    , m_dataBaseManager(databaseManager)
 {
     ui->setupUi(this);
+
+    connect(
+        m_ollamaClient,
+        &OllamaClient::responseReceived,
+        this,
+        [this](const QString& response)
+        {
+            ui->plainTextEdit_ai->setPlainText(response);
+
+            if (!m_dataBaseManager->isValidSql(response))
+            {
+                QMessageBox::warning(
+                    this,
+                    "Invalid SQL",
+                    "The AI response does not contain valid SQL."
+                    );
+
+                return;
+            }
+
+            if (m_dataBaseManager->executeQuery(response))
+            {
+                QMessageBox::information(
+                    this,
+                    "Database",
+                    "SQL executed successfully."
+                    );
+            }
+        });
 }
 
 Tablegenerator::~Tablegenerator()
@@ -41,8 +72,8 @@ void Tablegenerator::on_pushButton_generate_clicked()
         scanner.scanAndReadClassFiles(m_classPath);
 
     QString prompt =
-        "Generate SQLite CREATE TABLE statements from these classes. "
-        "Return only valid SQL, no explanation. Please only a valid SQL\n\n";
+        "You are a SQLite schema generator. "
+        "Output only executable CREATE TABLE statements.\n\n";
 
     for (const ScannedClassFile& file : files)
     {
@@ -71,6 +102,5 @@ void Tablegenerator::on_pushButton_generate_clicked()
     }
 
     qDebug() << "Prompt:" << prompt;
-
     m_ollamaClient->generateSql(m_selectedModel, prompt);
 }

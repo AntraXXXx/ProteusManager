@@ -7,15 +7,11 @@ class DatabaseManager
 {
 public:
     bool openDatabase(QString& connectionName, QString& databasePath);
-
     bool isLocalDatabase(bool isLocal);
-
     bool isConnected() const;
-
     bool executeQuery(const QString& executeSqlCommand);
-
+    bool isValidSql(const QString& sql);
     void setConnection(const bool connected);
-
     void setDatabasePath(const QString& path);
 public:
     QString getSqlConnectionName() const;

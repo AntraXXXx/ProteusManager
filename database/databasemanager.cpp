@@ -90,5 +90,11 @@ bool DatabaseManager::isConnected() const
     return m_isConnected;
 }
 
+bool DatabaseManager::isValidSql(
+    const QString& sql)
+{
+    QString upperSql = sql.toUpper();
 
+    return upperSql.contains("CREATE TABLE");
+}
 
