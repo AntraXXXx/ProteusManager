@@ -139,10 +139,18 @@ void MainWindow::on_pushButton_adddatabasedir_clicked()
 
 void MainWindow::on_pushButton_ConnectDB_clicked()
 {
+
+
     QFileInfo fileInfo(ui->lineEdit_localdatabasepath->text());
 
     QString connectionName = fileInfo.fileName();
     QString filePath =  ui->lineEdit_localdatabasepath->text();
+
+    bool success =
+        m_dataBaseManager->openDatabase(
+            connectionName,
+            filePath
+            );
 
     if(!connectionName.isEmpty() && !filePath.isEmpty())
     {

@@ -12,13 +12,16 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
     , m_dataBaseManager(databaseManager)
 {
     ui->setupUi(this);
-
+    ui->progressBar_loading->hide();
     connect(
         m_ollamaClient,
         &OllamaClient::responseReceived,
         this,
         [this](const QString& response)
         {
+           // ui->progressBar_loading->hide();
+            ui->pushButton_generate->setEnabled(true);
+
             ui->plainTextEdit_ai->setPlainText(response);
 
             if (!m_dataBaseManager->isValidSql(response))
@@ -28,6 +31,7 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
                     "Invalid SQL",
                     "The AI response does not contain valid SQL."
                     );
+                 ui->progressBar_loading->hide();
 
                 return;
             }
@@ -39,7 +43,20 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
                     "Database",
                     "SQL executed successfully."
                     );
+                 ui->progressBar_loading->hide();
             }
+        });
+
+    connect(
+        m_ollamaClient,
+        &OllamaClient::errorOccurred,
+        this,
+        [this](const QString& error)
+        {
+            ui->progressBar_loading->hide();
+            ui->pushButton_generate->setEnabled(true);
+
+            QMessageBox::critical(this, "Ollama Error", error);
         });
 }
 
@@ -65,6 +82,10 @@ void Tablegenerator::on_pushButton_addclasses_clicked()
 
 void Tablegenerator::on_pushButton_generate_clicked()
 {
+    ui->progressBar_loading->setRange(0, 0); // unendlich laden
+    ui->progressBar_loading->show();
+    ui->pushButton_generate->setEnabled(false);
+
     ClassScanner scanner;
     ClassParser parser;
 
