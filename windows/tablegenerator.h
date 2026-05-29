@@ -25,8 +25,10 @@ public:
 
 private slots:
     void on_pushButton_addclasses_clicked();
-
     void on_pushButton_generate_clicked();
+
+    void on_pushButton_execute_clicked();
+
 private:
     Ui::Tablegenerator *ui;
     OllamaClient *m_ollamaClient = nullptr;
@@ -34,6 +36,7 @@ private:
     //QString m_databasePath;
     QString m_classPath;
     QString m_selectedModel;
+    QString m_prompt;
 };
 
 
