@@ -30,13 +30,13 @@
    <property name="geometry">
     <rect>
      <x>110</x>
-     <y>550</y>
+     <y>480</y>
      <width>111</width>
      <height>41</height>
     </rect>
    </property>
    <property name="text">
-    <string>Generate</string>
+    <string>Generate SQL</string>
    </property>
   </widget>
   <widget class="QLabel" name="label_classes">
@@ -74,7 +74,7 @@
    <property name="geometry">
     <rect>
      <x>480</x>
-     <y>550</y>
+     <y>540</y>
      <width>91</width>
      <height>41</height>
     </rect>
@@ -100,7 +100,7 @@
    <property name="geometry">
     <rect>
      <x>110</x>
-     <y>360</y>
+     <y>300</y>
      <width>461</width>
      <height>171</height>
     </rect>
@@ -113,7 +113,7 @@
    <property name="geometry">
     <rect>
      <x>110</x>
-     <y>340</y>
+     <y>280</y>
      <width>141</width>
      <height>16</height>
     </rect>
@@ -126,13 +126,26 @@
    <property name="geometry">
     <rect>
      <x>230</x>
-     <y>560</y>
+     <y>550</y>
      <width>251</width>
      <height>21</height>
     </rect>
    </property>
    <property name="value">
     <number>24</number>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_execute">
+   <property name="geometry">
+    <rect>
+     <x>110</x>
+     <y>540</y>
+     <width>111</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Execute SQL </string>
    </property>
   </widget>
  </widget>

@@ -146,11 +146,11 @@ void MainWindow::on_pushButton_ConnectDB_clicked()
     QString connectionName = fileInfo.fileName();
     QString filePath =  ui->lineEdit_localdatabasepath->text();
 
-    bool success =
-        m_dataBaseManager->openDatabase(
-            connectionName,
-            filePath
-            );
+//   bool success =
+//       m_dataBaseManager->openDatabase(
+//           connectionName,
+//          filePath
+//          );
 
     if(!connectionName.isEmpty() && !filePath.isEmpty())
     {

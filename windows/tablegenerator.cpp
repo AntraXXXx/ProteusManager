@@ -13,6 +13,8 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
 {
     ui->setupUi(this);
     ui->progressBar_loading->hide();
+    ui->pushButton_execute->setEnabled(false);
+
     connect(
         m_ollamaClient,
         &OllamaClient::responseReceived,
@@ -24,27 +26,10 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
 
             ui->plainTextEdit_ai->setPlainText(response);
 
-            if (!m_dataBaseManager->isValidSql(response))
-            {
-                QMessageBox::warning(
-                    this,
-                    "Invalid SQL",
-                    "The AI response does not contain valid SQL."
-                    );
-                 ui->progressBar_loading->hide();
-
-                return;
+            if(!response.isEmpty()){
+            ui->pushButton_execute->setEnabled(true);
             }
 
-            if (m_dataBaseManager->executeQuery(response))
-            {
-                QMessageBox::information(
-                    this,
-                    "Database",
-                    "SQL executed successfully."
-                    );
-                 ui->progressBar_loading->hide();
-            }
         });
 
     connect(
@@ -58,6 +43,7 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
 
             QMessageBox::critical(this, "Ollama Error", error);
         });
+
 }
 
 Tablegenerator::~Tablegenerator()
@@ -82,7 +68,7 @@ void Tablegenerator::on_pushButton_addclasses_clicked()
 
 void Tablegenerator::on_pushButton_generate_clicked()
 {
-    ui->progressBar_loading->setRange(0, 0); // unendlich laden
+    ui->progressBar_loading->setRange(0, 0);
     ui->progressBar_loading->show();
     ui->pushButton_generate->setEnabled(false);
 
@@ -92,9 +78,16 @@ void Tablegenerator::on_pushButton_generate_clicked()
     QList<ScannedClassFile> files =
         scanner.scanAndReadClassFiles(m_classPath);
 
-    QString prompt =
-        "You are a SQLite schema generator. "
-        "Output only executable CREATE TABLE statements.\n\n";
+    m_prompt =
+        "You are a professional SQLite database architect. "
+        "Analyze all provided classes and attributes. "
+        "Include every detected class as a table and every detected attribute as a column. "
+        "Do not omit, simplify, or ignore any class, attribute, datatype, or relationship. "
+        "Generate a complete and normalized SQLite database schema. "
+        "Create primary keys and foreign keys where relationships are detected. "
+        "Use appropriate SQLite datatypes. "
+        "Return only executable CREATE TABLE statements. "
+        "No markdown. No comments. No explanation.\n\n";
 
     for (const ScannedClassFile& file : files)
     {
@@ -103,25 +96,54 @@ void Tablegenerator::on_pushButton_generate_clicked()
 
         for (const ParsedClass& cls : classes)
         {
-            prompt += "Class: " + cls.name + "\n";
+            m_prompt += "Class: " + cls.name + "\n";
 
             for (const ParsedAttribute& attribute : cls.attributes)
             {
-                prompt += "- "
+                m_prompt += "- "
                           + attribute.type
                           + " "
                           + attribute.name;
 
                 if (attribute.isRelation)
-                    prompt += " relationship";
+                    m_prompt += " relationship";
 
-                prompt += "\n";
+                m_prompt += "\n";
             }
 
-            prompt += "\n";
+            m_prompt += "\n";
         }
     }
 
-    qDebug() << "Prompt:" << prompt;
-    m_ollamaClient->generateSql(m_selectedModel, prompt);
+    qDebug() << "Prompt:" << m_prompt;
+    m_ollamaClient->generateSql(m_selectedModel, m_prompt);
 }
+
+void Tablegenerator::on_pushButton_execute_clicked()
+{
+    QString response = ui->plainTextEdit_ai->toPlainText();
+
+    if (!m_dataBaseManager->isValidSql(response))
+    {
+        QMessageBox::warning(
+            this,
+            "Invalid SQL",
+            "The AI response does not contain valid SQL."
+            );
+        ui->progressBar_loading->hide();
+
+        return;
+    }
+
+    if (m_dataBaseManager->executeQuery(response))
+    {
+        QMessageBox::information(
+            this,
+            "Database",
+            "SQL executed successfully."
+            );
+        ui->progressBar_loading->hide();
+        ui->pushButton_execute->setEnabled(false);
+    }
+}
+
