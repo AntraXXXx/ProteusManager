@@ -5,13 +5,15 @@
 #include <QTextStream>
 #include <QDebug>
 
-QList<ScannedClassFile> ClassScanner::scanAndReadClassFiles(const QString& folderPath)
+QList<ScannedClassFile> ClassScanner::scanAndReadClassFiles(
+    const QString& folderPath,
+    ProgrammingLanguage::ProgrammingLanguageType language)
 {
     QList<ScannedClassFile> result;
 
     QDirIterator iterator(
         folderPath,
-        QStringList() << "*.h",
+        fileFiltersForLanguage(language),
         QDir::Files,
         QDirIterator::Subdirectories
         );
@@ -34,6 +36,42 @@ QList<ScannedClassFile> ClassScanner::scanAndReadClassFiles(const QString& folde
     }
 
     return result;
+}
+
+QStringList ClassScanner::fileFiltersForLanguage(
+    ProgrammingLanguage::ProgrammingLanguageType language) const
+{
+    switch (language)
+    {
+    case ProgrammingLanguage::ProgrammingLanguageType::Cplusplus:
+        return QStringList() << "*.h" << "*.hpp";//  later *.cpp
+
+    case ProgrammingLanguage::ProgrammingLanguageType::Csharp:
+        return QStringList() << "*.cs";
+
+    case ProgrammingLanguage::ProgrammingLanguageType::C:
+        return QStringList() << "*.c" << "*.h";
+
+    case ProgrammingLanguage::ProgrammingLanguageType::Java:
+        return QStringList() << "*.java";
+
+    case ProgrammingLanguage::ProgrammingLanguageType::Python:
+        return QStringList() << "*.py";
+
+    case ProgrammingLanguage::ProgrammingLanguageType::Rust:
+        return QStringList() << "*.rs";
+
+    case ProgrammingLanguage::ProgrammingLanguageType::Powershell:
+        return QStringList() << "*.ps1";
+
+    case ProgrammingLanguage::ProgrammingLanguageType::Go:
+        return QStringList() << "*.go";
+
+    case ProgrammingLanguage::ProgrammingLanguageType::Fsharp:
+        return QStringList() << "*.fs" << "*.fsx";
+    }
+
+    return QStringList() << "*.h";
 }
 
 QString ClassScanner::readFileContent(const QString& filePath)

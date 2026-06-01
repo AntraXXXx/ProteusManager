@@ -61,7 +61,30 @@ MainWindow::MainWindow(QWidget *parent)
     ui->lineEdit_Password->setHidden(isLocal);
 
     ui->pushButton_SqlGenerator->setEnabled(false);
-     ui->pushButton_ConnectDB->setStyleSheet("background-color: red;");
+    ui->pushButton_ConnectDB->setStyleSheet("background-color: red;");
+
+
+    QList<ProgrammingLanguage::ProgrammingLanguageType> languages =
+        {
+            ProgrammingLanguage::ProgrammingLanguageType::Cplusplus,
+            ProgrammingLanguage::ProgrammingLanguageType::C,
+            ProgrammingLanguage::ProgrammingLanguageType::Csharp,
+            ProgrammingLanguage::ProgrammingLanguageType::Python,
+            ProgrammingLanguage::ProgrammingLanguageType::Go,
+            ProgrammingLanguage::ProgrammingLanguageType::Rust,
+            ProgrammingLanguage::ProgrammingLanguageType::Fsharp,
+            ProgrammingLanguage::ProgrammingLanguageType::Powershell,
+            ProgrammingLanguage::ProgrammingLanguageType::Java
+        };
+
+
+    for (auto language : languages)
+    {
+        ui->comboBox_CodeLanguage->addItem(
+            ProgrammingLanguage::languageTypeToText(language),
+            static_cast<int>(language)
+            );
+    }
 }
 
 MainWindow::~MainWindow()
@@ -86,6 +109,7 @@ void MainWindow::on_pushButton_SqlGenerator_clicked()
     }
 
     m_tableGenerator->setSelectedModel(m_selectedModel);
+    m_tableGenerator->setSelectedLanguage(m_selectedLanguageType);
 
     m_tableGenerator->show();
     m_tableGenerator->raise();
@@ -135,8 +159,6 @@ void MainWindow::on_pushButton_adddatabasedir_clicked()
     ui->lineEdit_localdatabasepath->setText(databasePath);
 }
 
-
-
 void MainWindow::on_pushButton_ConnectDB_clicked()
 {
 
@@ -171,5 +193,24 @@ void MainWindow::on_pushButton_ConnectDB_clicked()
             return;
         }
     }
+}
+
+void MainWindow::on_comboBox_CodeLanguage_currentIndexChanged(int index)
+{
+    m_selectedLanguageType =
+        static_cast<ProgrammingLanguage::ProgrammingLanguageType>(
+            ui->comboBox_CodeLanguage->itemData(index).toInt()
+            );
+
+    if (m_tableGenerator)
+    {
+        m_tableGenerator->setSelectedLanguage(m_selectedLanguageType);
+    }
+}
+
+
+void MainWindow::on_pushButton_Exit_clicked()
+{
+    QApplication::quit();
 }
 

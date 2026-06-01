@@ -7,6 +7,7 @@
 #include <QMessageBox>
 #include "../client/ollamaclient.h"
 #include "../database/databasemanager.h"
+#include "../utils/programminglanguagetype.h"
 
 namespace Ui {
 class Tablegenerator;
@@ -22,6 +23,7 @@ public:
     ~Tablegenerator();
 
     void setSelectedModel(const QString& model);
+    void setSelectedLanguage(ProgrammingLanguage::ProgrammingLanguageType language);
 
 private slots:
     void on_pushButton_addclasses_clicked();
@@ -37,6 +39,8 @@ private:
     QString m_classPath;
     QString m_selectedModel;
     QString m_prompt;
+    ProgrammingLanguage::ProgrammingLanguageType m_selectedLanguage =
+        ProgrammingLanguage::ProgrammingLanguageType::Cplusplus;
 };
 
 
