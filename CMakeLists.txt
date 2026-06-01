@@ -37,6 +37,12 @@ qt_add_executable(DataBaseManager
     client/ollamaclient.h client/ollamaclient.cpp
     database/databasemanager.h
     database/databasemanager.cpp
+    utils/programminglanguage.h
+    utils/programminglanguage.cpp
+
+
+
+
 
 
 
