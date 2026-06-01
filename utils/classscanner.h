@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <QList>
+#include "programminglanguage.h"
 
 struct ScannedClassFile
 {
@@ -14,7 +15,12 @@ struct ScannedClassFile
 class ClassScanner
 {
 public:
-    QList<ScannedClassFile> scanAndReadClassFiles(const QString& folderPath);
+    QList<ScannedClassFile> scanAndReadClassFiles(
+        const QString& folderPath,
+        ProgrammingLanguage::ProgrammingLanguageType language);
+
+    QStringList fileFiltersForLanguage(
+        ProgrammingLanguage::ProgrammingLanguageType language) const;
 
 private:
     QString readFileContent(const QString& filePath);

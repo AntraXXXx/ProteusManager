@@ -44,6 +44,8 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
             QMessageBox::critical(this, "Ollama Error", error);
         });
 
+
+
 }
 
 Tablegenerator::~Tablegenerator()
@@ -54,6 +56,12 @@ Tablegenerator::~Tablegenerator()
 void Tablegenerator::setSelectedModel(const QString& model)
 {
     m_selectedModel = model;
+}
+
+void Tablegenerator::setSelectedLanguage(
+    ProgrammingLanguage::ProgrammingLanguageType language)
+{
+    m_selectedLanguage = language;
 }
 
 void Tablegenerator::on_pushButton_addclasses_clicked()
@@ -75,14 +83,17 @@ void Tablegenerator::on_pushButton_generate_clicked()
     ClassScanner scanner;
     ClassParser parser;
 
-    QList<ScannedClassFile> files =
-        scanner.scanAndReadClassFiles(m_classPath);
+
+    QList<ScannedClassFile> files =scanner.scanAndReadClassFiles(m_classPath, m_selectedLanguage);
 
     m_prompt =
         "You are a professional SQLite database architect. "
         "Analyze all provided classes and attributes. "
         "Include every detected class as a table and every detected attribute as a column. "
+        "If an attribute appears to be the primary identifier of an entity, choose an appropriate PRIMARY KEY strategy. "
+        "Use AUTOINCREMENT only when automatic identifier generation is logically required."
         "Do not omit, simplify, or ignore any class, attribute, datatype, or relationship. "
+        "Add created_at and updated_at columns. "
         "Generate a complete and normalized SQLite database schema. "
         "Create primary keys and foreign keys where relationships are detected. "
         "Use appropriate SQLite datatypes. "
@@ -92,7 +103,10 @@ void Tablegenerator::on_pushButton_generate_clicked()
     for (const ScannedClassFile& file : files)
     {
         QList<ParsedClass> classes =
-            parser.parseCppClasses(file.content);
+            parser.parseClasses(
+                file.content,
+                m_selectedLanguage
+                );
 
         for (const ParsedClass& cls : classes)
         {
@@ -145,5 +159,11 @@ void Tablegenerator::on_pushButton_execute_clicked()
         ui->progressBar_loading->hide();
         ui->pushButton_execute->setEnabled(false);
     }
+}
+
+
+void Tablegenerator::on_pushButton_back_clicked()
+{
+    this->close();
 }
 
