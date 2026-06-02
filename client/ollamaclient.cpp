@@ -43,7 +43,6 @@ void OllamaClient::checkConnection()
     });
 }
 
-
 void OllamaClient::fetchModels()
 {
     QNetworkRequest request(QUrl("http://localhost:11434/api/tags"));
@@ -72,12 +71,10 @@ void OllamaClient::fetchModels()
     });
 }
 
-void OllamaClient::generateSql(const QString& model,
-                               const QString& prompt)
+void OllamaClient::generate(const QString& model,
+                            const QString& prompt,
+                            GenerateType type)
 {
-   // qDebug() << "Selected model:" << model;
-   // qDebug() << "Prompt:" << prompt;
-
     QNetworkRequest request(QUrl("http://localhost:11434/api/generate"));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
@@ -91,12 +88,12 @@ void OllamaClient::generateSql(const QString& model,
     QNetworkReply *reply =
         m_networkManager->post(request, QJsonDocument(body).toJson());
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, type]() {
 
         qDebug() << "Reply received";
 
-        if (reply->error() != QNetworkReply::NoError) {
-
+        if (reply->error() != QNetworkReply::NoError)
+        {
             qDebug() << "Network Error:";
             qDebug() << reply->errorString();
 
@@ -108,9 +105,6 @@ void OllamaClient::generateSql(const QString& model,
 
         QByteArray responseData = reply->readAll();
 
-      //  qDebug() << "Raw Response:";
-       // qDebug() << responseData;
-
         QJsonDocument doc =
             QJsonDocument::fromJson(responseData);
 
@@ -119,10 +113,18 @@ void OllamaClient::generateSql(const QString& model,
 
         qDebug() << "AI Response:";
         qDebug() << response;
-        m_lastResponse = "AI Response: /n" + response;
-        emit responseReceived(response);
+
+        m_lastResponse = "AI Response:\n" + response;
+
+        if (type == GenerateType::Sql)
+        {
+            emit sqlReceived(response);
+        }
+        else if (type == GenerateType::Dal)
+        {
+            emit dalReceived(response);
+        }
 
         reply->deleteLater();
     });
 }
-

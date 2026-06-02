@@ -164,6 +164,14 @@ QString DatabaseManager::buildSchemaDescription()
     return result;
 }
 
+QString DatabaseManager::databaseDriver() const
+{
+    QSqlDatabase db =
+        QSqlDatabase::database(
+            m_dataBaseConnectionName);
+
+    return db.driverName();
+}
 
 bool DatabaseManager::columnExists(
     const QString& tableName,

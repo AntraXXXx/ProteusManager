@@ -123,6 +123,8 @@ void MainWindow::on_pushButton_SqlGenerator_clicked()
     m_tableGenerator->setSelectedModel(m_selectedModel);
     m_tableGenerator->setSelectedLanguage(m_selectedLanguageType);
 
+    m_tableGenerator->refreshUi();
+
     m_tableGenerator->show();
     m_tableGenerator->raise();
     m_tableGenerator->activateWindow();
@@ -219,7 +221,6 @@ void MainWindow::on_comboBox_CodeLanguage_currentIndexChanged(int index)
         m_tableGenerator->setSelectedLanguage(m_selectedLanguageType);
     }
 }
-
 
 void MainWindow::on_pushButton_Exit_clicked()
 {

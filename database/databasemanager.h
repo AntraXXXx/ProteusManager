@@ -21,6 +21,7 @@ public:
     QString buildSchemaDescription();
     QStringList getColumnNames(const QString& tableName);
     QStringList getTableNames();
+    QString databaseDriver() const;
 private:
     QString m_databasePath;
     bool m_isConnected;
