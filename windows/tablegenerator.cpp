@@ -43,9 +43,6 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
 
             QMessageBox::critical(this, "Ollama Error", error);
         });
-
-
-
 }
 
 Tablegenerator::~Tablegenerator()
@@ -80,25 +77,99 @@ void Tablegenerator::on_pushButton_generate_clicked()
     ui->progressBar_loading->show();
     ui->pushButton_generate->setEnabled(false);
 
+
+    if (m_classPath.isEmpty())
+    {
+        QMessageBox::warning(this, "Missing path", "Please select a class folder first.");
+        ui->progressBar_loading->hide();
+        ui->pushButton_generate->setEnabled(true);
+        return;
+    }
+
+    if (m_selectedModel.isEmpty())
+    {
+        QMessageBox::warning(this, "Missing AI model", "Please select an AI model first.");
+        ui->progressBar_loading->hide();
+        ui->pushButton_generate->setEnabled(true);
+        return;
+    }
+
+    if (!m_dataBaseManager->isConnected())
+    {
+        QMessageBox::warning(
+            this,
+            "Database",
+            "Please connect to a database first."
+            );
+
+        ui->progressBar_loading->hide();
+        ui->pushButton_generate->setEnabled(true);
+        return;
+    }
+
     ClassScanner scanner;
     ClassParser parser;
 
 
     QList<ScannedClassFile> files =scanner.scanAndReadClassFiles(m_classPath, m_selectedLanguage);
 
+    if (files.isEmpty())
+    {
+        QMessageBox::warning(
+            this,
+            "No files found",
+            "No class files were found in the selected folder."
+            );
+
+        ui->progressBar_loading->hide();
+        ui->pushButton_generate->setEnabled(true);
+        return;
+    }
+
     m_prompt =
         "You are a professional SQLite database architect. "
-        "Analyze all provided classes and attributes. "
-        "Include every detected class as a table and every detected attribute as a column. "
-        "If an attribute appears to be the primary identifier of an entity, choose an appropriate PRIMARY KEY strategy. "
-        "Use AUTOINCREMENT only when automatic identifier generation is logically required."
-        "Do not omit, simplify, or ignore any class, attribute, datatype, or relationship. "
-        "Add created_at and updated_at columns. "
-        "Generate a complete and normalized SQLite database schema. "
-        "Create primary keys and foreign keys where relationships are detected. "
+        "Analyze all provided classes, attributes and database metadata. "
+
+        "Use only the provided class names, attribute names and database information. "
+        "Never rename classes. "
+        "Never rename attributes. "
+        "Never replace an existing attribute with a different name. "
+        "Attribute names must remain exactly as provided. "
+        "If an attribute is named username, it must remain username. "
+        "Do not convert username to name or any other synonym. "
+        "Do not invent attributes that are not provided. "
+        "Respect exact attribute names, spelling and casing. "
+
+        "If a table does not exist, generate a CREATE TABLE statement. "
+        "If a table already exists, do not recreate it. "
+        "If an attribute is missing in an existing table, generate ALTER TABLE ADD COLUMN. "
+        "If an attribute already exists, do not generate it again. "
+
+        "Never drop, delete, recreate or overwrite existing tables. "
+        "Never remove existing columns. "
+        "Never destroy existing data. "
+
+        "Every detected class and attribute must be considered exactly as provided. "
         "Use appropriate SQLite datatypes. "
-        "Return only executable CREATE TABLE statements. "
-        "No markdown. No comments. No explanation.\n\n";
+        "Create primary keys and foreign keys where appropriate. "
+        "Use AUTOINCREMENT only when automatic identifier generation is logically required. ";
+
+    if (ui->checkBox_aduitfields->isChecked())
+    {
+        m_prompt +=
+            "Add createdAt and updatedAt columns to all generated tables. ";
+    }
+    else
+    {
+        m_prompt +=
+            "Do not add createdAt or updatedAt unless they are explicitly defined in the provided classes. ";
+    }
+
+    m_prompt +=
+        "Return only executable SQLite SQL statements. "
+        "No markdown. "
+        "No comments. "
+        "No explanation.\n\n";
 
     for (const ScannedClassFile& file : files)
     {
@@ -112,12 +183,41 @@ void Tablegenerator::on_pushButton_generate_clicked()
         {
             m_prompt += "Class: " + cls.name + "\n";
 
+            if (m_dataBaseManager->tableExists(cls.name))
+            {
+                m_prompt += "Existing table: yes\n";
+
+                if (m_dataBaseManager->hasRows(cls.name))
+                    m_prompt += "Table contains data: yes\n";
+                else
+                    m_prompt += "Table contains data: no\n";
+
+                QStringList existingColumns =
+                    m_dataBaseManager->getColumnNames(cls.name);
+
+                m_prompt += "Existing columns: "
+                            + existingColumns.join(", ")
+                            + "\n";
+            }
+            else
+            {
+                m_prompt += "Existing table: no\n";
+            }
+
             for (const ParsedAttribute& attribute : cls.attributes)
             {
                 m_prompt += "- "
-                          + attribute.type
-                          + " "
-                          + attribute.name;
+                            + attribute.type
+                            + " "
+                            + attribute.name;
+
+                if (m_dataBaseManager->tableExists(cls.name))
+                {
+                    if (m_dataBaseManager->columnExists(cls.name, attribute.name))
+                        m_prompt += " existing_column";
+                    else
+                        m_prompt += " missing_column";
+                }
 
                 if (attribute.isRelation)
                     m_prompt += " relationship";
@@ -161,9 +261,14 @@ void Tablegenerator::on_pushButton_execute_clicked()
     }
 }
 
-
 void Tablegenerator::on_pushButton_back_clicked()
 {
     this->close();
 }
 
+void Tablegenerator::closeEvent(QCloseEvent *event)
+{
+    emit windowClosed();
+
+    QWidget::closeEvent(event);
+}

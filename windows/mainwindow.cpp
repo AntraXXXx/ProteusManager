@@ -106,6 +106,18 @@ void MainWindow::on_pushButton_SqlGenerator_clicked()
     if (!m_tableGenerator)
     {
           m_tableGenerator = new Tablegenerator(m_dataBaseManager);
+
+        connect(
+            m_tableGenerator,
+            &Tablegenerator::windowClosed,
+            this,
+            [this]()
+            {
+                ui->pushButton_ConnectDB->setEnabled(true);
+                ui->pushButton_ConnectDB->setStyleSheet("background-color: none;");
+                ui->pushButton_ConnectDB->setText("Connect");
+                ui->pushButton_SqlGenerator->setEnabled(false);
+            });
     }
 
     m_tableGenerator->setSelectedModel(m_selectedModel);

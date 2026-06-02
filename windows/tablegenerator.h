@@ -5,9 +5,10 @@
 #include <QLineEdit>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QCloseEvent>
 #include "../client/ollamaclient.h"
 #include "../database/databasemanager.h"
-#include "../utils/programminglanguagetype.h"
+#include "../utils/programminglanguage.h"
 
 namespace Ui {
 class Tablegenerator;
@@ -30,6 +31,14 @@ private slots:
     void on_pushButton_generate_clicked();
 
     void on_pushButton_execute_clicked();
+
+    void on_pushButton_back_clicked();
+
+signals:
+    void windowClosed();
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     Ui::Tablegenerator *ui;
