@@ -90,6 +90,115 @@ bool DatabaseManager::isConnected() const
     return m_isConnected;
 }
 
+bool DatabaseManager::tableExists(const QString& tableName)
+{
+    QSqlDatabase db =
+        QSqlDatabase::database(m_dataBaseConnectionName);
+
+    if (!db.isOpen())
+    {
+        qDebug() << "Database is not open";
+        return false;
+    }
+
+    QSqlQuery query(db);
+
+    query.prepare(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name=:tableName"
+        );
+
+    query.bindValue(":tableName", tableName);
+
+    if (!query.exec())
+    {
+        qDebug() << "Table check error:"
+                 << query.lastError().text();
+
+        return false;
+    }
+
+    return query.next();
+}
+
+bool DatabaseManager::columnExists(
+    const QString& tableName,
+    const QString& columnName)
+{
+    QSqlDatabase db =
+        QSqlDatabase::database(
+            m_dataBaseConnectionName);
+
+    QSqlQuery query(
+        QString("PRAGMA table_info(%1)")
+            .arg(tableName),
+        db);
+
+    while (query.next())
+    {
+        QString column =
+            query.value("name").toString();
+
+        if (column.compare(
+                columnName,
+                Qt::CaseInsensitive) == 0)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool DatabaseManager::hasRows(
+    const QString& tableName)
+{
+    QSqlDatabase db =
+        QSqlDatabase::database(
+            m_dataBaseConnectionName);
+
+    QSqlQuery query(db);
+
+    query.exec(
+        QString(
+            "SELECT COUNT(*) FROM %1")
+            .arg(tableName));
+
+    if (query.next())
+    {
+        return query.value(0).toInt() > 0;
+    }
+
+    return false;
+}
+
+QStringList DatabaseManager::getColumnNames(
+    const QString& tableName)
+{
+    QStringList columns;
+
+    QSqlDatabase db =
+        QSqlDatabase::database(
+            m_dataBaseConnectionName);
+
+    if (!db.isOpen())
+        return columns;
+
+    QSqlQuery query(
+        QString("PRAGMA table_info(%1)")
+            .arg(tableName),
+        db);
+
+    while (query.next())
+    {
+        columns.append(
+            query.value("name").toString()
+            );
+    }
+
+    return columns;
+}
+
 bool DatabaseManager::isValidSql(
     const QString& sql)
 {

@@ -6,7 +6,7 @@
 #include "../windows/tablegenerator.h"
 #include "../client/ollamaclient.h"
 #include "../database/databasemanager.h"
-#include "../utils/programminglanguagetype.h"
+#include "../utils/programminglanguage.h"
 #include <QSettings>
 #include <QGroupBox>
 //#include <QMetaEnum>
@@ -39,6 +39,8 @@ private slots:
 
     void on_comboBox_CodeLanguage_currentIndexChanged(int index);
 
+    void on_pushButton_Exit_clicked();
+
 private:
     Ui::MainWindow *ui;
     OllamaClient *m_ollamaClient;
@@ -46,6 +48,7 @@ private:
    // DatabaseController *m_databaseController = nullptr;
     Tablegenerator *m_tableGenerator = nullptr;
     QString m_selectedModel;
+    QCheckBox* checkBox_AuditFields;
 
     ProgrammingLanguage::ProgrammingLanguageType m_selectedLanguageType =
         ProgrammingLanguage::ProgrammingLanguageType::Cplusplus;

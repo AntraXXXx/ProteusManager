@@ -148,6 +148,19 @@
     <string>Execute SQL </string>
    </property>
   </widget>
+  <widget class="QCheckBox" name="checkBox_aduitfields">
+   <property name="geometry">
+    <rect>
+     <x>110</x>
+     <y>240</y>
+     <width>571</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Add audit fields (createdAt, updatedAt)</string>
+   </property>
+  </widget>
  </widget>
  <resources/>
  <connections/>
