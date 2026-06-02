@@ -18,7 +18,9 @@ public:
     void setDatabasePath(const QString& path);
 public:
     QString getSqlConnectionName() const;
+    QString buildSchemaDescription();
     QStringList getColumnNames(const QString& tableName);
+    QStringList getTableNames();
 private:
     QString m_databasePath;
     bool m_isConnected;

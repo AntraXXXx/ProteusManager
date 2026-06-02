@@ -161,6 +161,19 @@
     <string>Add audit fields (createdAt, updatedAt)</string>
    </property>
   </widget>
+  <widget class="QPushButton" name="pushButton_normalize">
+   <property name="geometry">
+    <rect>
+     <x>480</x>
+     <y>480</y>
+     <width>91</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Normalize</string>
+   </property>
+  </widget>
  </widget>
  <resources/>
  <connections/>

@@ -77,7 +77,6 @@ void Tablegenerator::on_pushButton_generate_clicked()
     ui->progressBar_loading->show();
     ui->pushButton_generate->setEnabled(false);
 
-
     if (m_classPath.isEmpty())
     {
         QMessageBox::warning(this, "Missing path", "Please select a class folder first.");
@@ -110,6 +109,9 @@ void Tablegenerator::on_pushButton_generate_clicked()
     ClassScanner scanner;
     ClassParser parser;
 
+    ui->plainTextEdit_ai->setPlainText(
+        "Scanning class files...\n"
+        );
 
     QList<ScannedClassFile> files =scanner.scanAndReadClassFiles(m_classPath, m_selectedLanguage);
 
@@ -171,6 +173,12 @@ void Tablegenerator::on_pushButton_generate_clicked()
         "No comments. "
         "No explanation.\n\n";
 
+    ui->plainTextEdit_ai->setPlainText(
+        "Parsing classes and attributes...\n"
+        "Checking existing database tables...\n"
+        "Checking existing columns...\n"
+        );
+
     for (const ScannedClassFile& file : files)
     {
         QList<ParsedClass> classes =
@@ -228,7 +236,9 @@ void Tablegenerator::on_pushButton_generate_clicked()
             m_prompt += "\n";
         }
     }
-
+    ui->plainTextEdit_ai->setPlainText(
+        "Generating SQL schema with AI..."
+        );
     qDebug() << "Prompt:" << m_prompt;
     m_ollamaClient->generateSql(m_selectedModel, m_prompt);
 }
@@ -272,3 +282,28 @@ void Tablegenerator::closeEvent(QCloseEvent *event)
 
     QWidget::closeEvent(event);
 }
+
+void Tablegenerator::on_pushButton_normalize_clicked()
+{
+    ui->progressBar_loading->setRange(0, 0);
+    ui->progressBar_loading->show();
+
+    QString prompt =
+        "You are a professional SQLite database normalization expert. "
+        "Analyze the following SQLite schema. "
+        "Normalize it up to 3NF where logically possible. "
+        "Generate only safe executable SQL migration statements. "
+        "Never drop data. Never delete tables. "
+        "Return only SQL. No markdown. No explanation.\n\n";
+
+    prompt += m_dataBaseManager->buildSchemaDescription();
+
+    ui->plainTextEdit_ai->setPlainText(
+        "Analyzing database schema..."
+        );
+
+    qDebug().noquote() << prompt;
+
+    m_ollamaClient->generateSql(m_selectedModel, prompt);
+}
+
