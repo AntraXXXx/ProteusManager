@@ -248,6 +248,8 @@ bool DatabaseManager::isValidSql(
 {
     QString upperSql = sql.toUpper();
 
-    return upperSql.contains("CREATE TABLE");
+    return upperSql.contains("CREATE TABLE")
+           || upperSql.contains("CREATE INDEX")
+           || upperSql.contains("ALTER TABLE");
 }
 
