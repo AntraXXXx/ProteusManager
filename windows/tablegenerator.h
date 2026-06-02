@@ -6,6 +6,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QCloseEvent>
+#include <QShowEvent>
 #include "../client/ollamaclient.h"
 #include "../database/databasemanager.h"
 #include "../utils/programminglanguage.h"
@@ -22,23 +23,25 @@ public:
     explicit Tablegenerator(DatabaseManager *databaseManager,
                             QWidget *parent = nullptr);
     ~Tablegenerator();
-
     void setSelectedModel(const QString& model);
     void setSelectedLanguage(ProgrammingLanguage::ProgrammingLanguageType language);
+    void refreshUi();
 
 private slots:
     void on_pushButton_addclasses_clicked();
     void on_pushButton_generate_clicked();
-
     void on_pushButton_execute_clicked();
-
     void on_pushButton_back_clicked();
-
+    void on_pushButton_normalize_clicked();
+    void on_pushButton_generatedal_clicked();
+    void on_pushButton_addoutputdal_clicked();
+    void on_pushButton_outputdal_clicked();
 signals:
     void windowClosed();
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private:
     Ui::Tablegenerator *ui;
@@ -46,6 +49,7 @@ private:
     DatabaseManager *m_dataBaseManager = nullptr;
     //QString m_databasePath;
     QString m_classPath;
+    QString m_dalPath;
     QString m_selectedModel;
     QString m_prompt;
     ProgrammingLanguage::ProgrammingLanguageType m_selectedLanguage =

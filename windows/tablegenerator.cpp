@@ -3,6 +3,7 @@
 //#include "../utils/textfilemanager.h"
 #include "../utils/classscanner.h"
 #include "../utils/classparser.h"
+#include "windows/ui_tablegenerator.h"
 
 Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
                                QWidget *parent)
@@ -17,7 +18,7 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
 
     connect(
         m_ollamaClient,
-        &OllamaClient::responseReceived,
+        &OllamaClient::sqlReceived,
         this,
         [this](const QString& response)
         {
@@ -34,6 +35,15 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
 
     connect(
         m_ollamaClient,
+        &OllamaClient::dalReceived,
+        this,
+        [this](const QString& code)
+        {
+            ui->plainTextEdit_dal->setPlainText(code);
+        });
+
+    connect(
+        m_ollamaClient,
         &OllamaClient::errorOccurred,
         this,
         [this](const QString& error)
@@ -43,6 +53,11 @@ Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
 
             QMessageBox::critical(this, "Ollama Error", error);
         });
+   // ui->pushButton_ConnectDB->setEnabled(true);
+   // ui->pushButton_ConnectDB->setStyleSheet("background-color: none;");
+  //  ui->pushButton_ConnectDB->setText("Connect");
+   // ui->pushButton_SqlGenerator->setEnabled(false);
+
 }
 
 Tablegenerator::~Tablegenerator()
@@ -71,12 +86,21 @@ void Tablegenerator::on_pushButton_addclasses_clicked()
     }
 }
 
+void Tablegenerator::on_pushButton_addoutputdal_clicked()
+{
+    QString folderPath = QFileDialog::getExistingDirectory(this, "Select a folder");
+
+    if (!folderPath.isEmpty()) {
+        ui->lineEdit_dalpath->setText(folderPath);
+        m_dalPath = folderPath;
+    }
+}
+
 void Tablegenerator::on_pushButton_generate_clicked()
 {
     ui->progressBar_loading->setRange(0, 0);
     ui->progressBar_loading->show();
     ui->pushButton_generate->setEnabled(false);
-
 
     if (m_classPath.isEmpty())
     {
@@ -110,6 +134,9 @@ void Tablegenerator::on_pushButton_generate_clicked()
     ClassScanner scanner;
     ClassParser parser;
 
+    ui->plainTextEdit_ai->setPlainText(
+        "Scanning class files...\n"
+        );
 
     QList<ScannedClassFile> files =scanner.scanAndReadClassFiles(m_classPath, m_selectedLanguage);
 
@@ -171,6 +198,12 @@ void Tablegenerator::on_pushButton_generate_clicked()
         "No comments. "
         "No explanation.\n\n";
 
+    ui->plainTextEdit_ai->setPlainText(
+        "Parsing classes and attributes...\n"
+        "Checking existing database tables...\n"
+        "Checking existing columns...\n"
+        );
+
     for (const ScannedClassFile& file : files)
     {
         QList<ParsedClass> classes =
@@ -228,9 +261,15 @@ void Tablegenerator::on_pushButton_generate_clicked()
             m_prompt += "\n";
         }
     }
-
-    qDebug() << "Prompt:" << m_prompt;
-    m_ollamaClient->generateSql(m_selectedModel, m_prompt);
+    ui->plainTextEdit_ai->setPlainText(
+        "Generating SQL schema with AI..."
+        );
+    //qDebug() << "Prompt:" << m_prompt;
+    m_ollamaClient->generate(
+        m_selectedModel,
+        m_prompt,
+        OllamaClient::GenerateType::Sql
+        );
 }
 
 void Tablegenerator::on_pushButton_execute_clicked()
@@ -272,3 +311,190 @@ void Tablegenerator::closeEvent(QCloseEvent *event)
 
     QWidget::closeEvent(event);
 }
+
+void Tablegenerator::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+
+    ui->plainTextEdit_dal->clear();
+
+    if (!m_dataBaseManager->isConnected())
+    {
+        ui->plainTextEdit_dal->setPlainText(
+            "No database connection available."
+            );
+
+        return;
+    }
+
+    QString driver =
+        m_dataBaseManager->databaseDriver();
+
+    ui->plainTextEdit_dal->setPlainText(
+        QString(
+            "Connected database: %1\n\nReady to generate DAL."
+            ).arg(driver)
+        );
+}
+
+void Tablegenerator::refreshUi()
+{
+    ProgrammingLanguage programmingLanguage;
+    ui->pushButton_generatedal->setText("Generate (DAL) " +  programmingLanguage.languageTypeToText(m_selectedLanguage));
+    ui->pushButton_outputdal->setText("Output DAL " + programmingLanguage.languageTypeToText(m_selectedLanguage) + " Code");
+    ui->checkBox_apiaccess->setText("Generate secure " + programmingLanguage.languageTypeToText(m_selectedLanguage) + " database access layer");
+
+    if (!m_dataBaseManager->isConnected())
+    {
+        ui->plainTextEdit_dal->setPlainText(
+            "No database connection available."
+            );
+
+        return;
+    }
+
+    ui->plainTextEdit_dal->setPlainText(
+        "Database connected and ready."
+        );
+}
+
+void Tablegenerator::on_pushButton_normalize_clicked()
+{
+    ui->progressBar_loading->setRange(0, 0);
+    ui->progressBar_loading->show();
+
+    QString sqlPrompt =
+        "You are a professional SQLite database normalization expert. "
+        "Analyze the following SQLite schema. "
+        "Normalize it up to 3NF where logically possible. "
+        "Generate only safe executable SQL migration statements. "
+        "Never drop data. Never delete tables. "
+        "Do not rename existing tables. "
+        "Do not assume JSON columns exist. "
+        "Do not use json_extract unless the schema explicitly contains a JSON column. "
+        "Only generate migration SQL based on the provided schema metadata. "
+        "Prefer safe ALTER TABLE ADD COLUMN statements. "
+        "Never generate destructive or risky migration steps without explicit confirmation. "
+        "Return only SQL. No markdown. No explanation.\n\n";
+
+    sqlPrompt += m_dataBaseManager->buildSchemaDescription();
+
+    ui->plainTextEdit_ai->setPlainText(
+        "Analyzing database schema..."
+        );
+
+    qDebug().noquote() << sqlPrompt;
+
+    m_ollamaClient->generate(
+        m_selectedModel,
+        sqlPrompt,
+        OllamaClient::GenerateType::Sql
+        );
+}
+
+void Tablegenerator::on_pushButton_generatedal_clicked()
+{
+    if (!m_dataBaseManager->isConnected())
+    {
+        QMessageBox::warning(
+            this,
+            "DAL Generator",
+            "No database connection available.");
+
+        return;
+    }
+
+    QString dalPrompt = "You are a professional database access layer generator. ";
+
+    if(ui->checkBox_apiaccess->isChecked()){
+        dalPrompt +=  "Generate secure database access classes for the following SQLite schema. ";
+        ui->plainTextEdit_dal->setPlainText(
+            "Generating secure database access layer..."
+            );
+    }
+    else{
+         dalPrompt +=  "Generate database access classes for the following SQLite schema. ";
+        ui->plainTextEdit_dal->setPlainText(
+            "Generating database access layer..."
+            );
+    }
+
+    dalPrompt += "Use real table names and real column names exactly as provided. "
+        "Never use placeholder names like ExampleRepository. "
+        "Never output placeholder tags like <header code> or <source code>. "
+        "Use prepared statements or parameter binding for all values. "
+        "Never concatenate user input into SQL strings. "
+        "Generate classes with create, read, update and delete methods. ";
+
+    ui->plainTextEdit_dal->setPlainText(
+        "Analyzing language for DAL..."
+        );
+
+    if (m_selectedLanguage == ProgrammingLanguage::ProgrammingLanguageType::Cplusplus)
+    {
+        ui->plainTextEdit_dal->setPlainText(
+            "Generating .h and .cpp files..."
+            );
+
+        dalPrompt +=
+            "Target language: C++ with Qt. "
+            "Use QSqlDatabase and QSqlQuery. "
+            "Generate one .h file and one .cpp file per database table. ";
+    }
+    else if (m_selectedLanguage == ProgrammingLanguage::ProgrammingLanguageType::Csharp)
+    {
+        dalPrompt +=
+            "Target language: C# with SQLite. "
+            "Generate one .cs file per database table. "
+            "Use parameterized queries. ";
+    }
+
+    dalPrompt +=
+        "Return files exactly in this format:\n"
+        "FILE: RealTableName.ext\n"
+        "actual code\n\n"
+        "No markdown. No explanation. No code fences.\n\n";
+
+    dalPrompt += m_dataBaseManager->buildSchemaDescription();
+
+    m_ollamaClient->generate(
+        m_selectedModel,
+        dalPrompt,
+        OllamaClient::GenerateType::Dal
+        );
+}
+
+void Tablegenerator::on_pushButton_outputdal_clicked()
+{
+    QString response = ui->plainTextEdit_dal->toPlainText();
+
+    if (response.isEmpty())
+        return;
+
+    QStringList sections =
+        response.split("FILE:", Qt::SkipEmptyParts);
+
+    for (const QString& section : sections)
+    {
+        QString trimmed = section.trimmed();
+
+        int lineEnd = trimmed.indexOf('\n');
+        if (lineEnd == -1)
+            continue;
+
+        QString fileName = trimmed.left(lineEnd).trimmed();
+        QString fileContent = trimmed.mid(lineEnd + 1);
+
+        QFile file(m_dalPath + "/" + fileName);
+
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text))
+        {
+            QTextStream out(&file);
+            out << fileContent;
+            file.close();
+        }
+    }
+
+    QMessageBox::information(this, "DAL", "DAL files saved.");
+}
+

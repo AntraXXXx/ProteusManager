@@ -121,6 +121,58 @@ bool DatabaseManager::tableExists(const QString& tableName)
     return query.next();
 }
 
+QStringList DatabaseManager::getTableNames()
+{
+    QStringList tables;
+
+    QSqlDatabase db = QSqlDatabase::database(m_dataBaseConnectionName);
+    QSqlQuery query(db);
+
+    query.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+
+    while (query.next())
+        tables.append(query.value(0).toString());
+
+    return tables;
+}
+
+QString DatabaseManager::buildSchemaDescription()
+{
+    QString result = "Current SQLite database schema:\n\n";
+
+    for (const QString& table : getTableNames())
+    {
+        result += "Table: " + table + "\n";
+
+        QSqlQuery query(
+            QString("PRAGMA table_info(%1)").arg(table),
+            QSqlDatabase::database(m_dataBaseConnectionName)
+            );
+
+        while (query.next())
+        {
+            result += "- "
+                      + query.value("name").toString()
+                      + " "
+                      + query.value("type").toString()
+                      + "\n";
+        }
+
+        result += "\n";
+    }
+
+    return result;
+}
+
+QString DatabaseManager::databaseDriver() const
+{
+    QSqlDatabase db =
+        QSqlDatabase::database(
+            m_dataBaseConnectionName);
+
+    return db.driverName();
+}
+
 bool DatabaseManager::columnExists(
     const QString& tableName,
     const QString& columnName)
@@ -204,6 +256,8 @@ bool DatabaseManager::isValidSql(
 {
     QString upperSql = sql.toUpper();
 
-    return upperSql.contains("CREATE TABLE");
+    return upperSql.contains("CREATE TABLE")
+           || upperSql.contains("CREATE INDEX")
+           || upperSql.contains("ALTER TABLE");
 }
 
