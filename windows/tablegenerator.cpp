@@ -155,7 +155,9 @@ void Tablegenerator::on_pushButton_generate_clicked()
 
     m_prompt =
         "You are a professional SQLite database architect. "
+        "Generate SQL that is fully compatible with SQLite 3. "
         "Analyze all provided classes, attributes and database metadata. "
+        "Never generate MySQL, PostgreSQL, SQL Server or Oracle syntax. "
 
         "Use only the provided class names, attribute names and database information. "
         "Never rename classes. "
@@ -175,7 +177,8 @@ void Tablegenerator::on_pushButton_generate_clicked()
         "Never drop, delete, recreate or overwrite existing tables. "
         "Never remove existing columns. "
         "Never destroy existing data. "
-
+        "No Duplicate Columns: Never generate ALTER TABLE to add a new column if a field with the same logical purpose already exists (e.g., do not add name if Username is present)."
+        "Semantic Mapping: Map fields by their meaning, not just exact names. If a matching concept exists under a slightly different name, reuse it instead of creating a new column."
         "Every detected class and attribute must be considered exactly as provided. "
         "Use appropriate SQLite datatypes. "
         "Create primary keys and foreign keys where appropriate. "
@@ -195,6 +198,9 @@ void Tablegenerator::on_pushButton_generate_clicked()
     m_prompt +=
         "Return only executable SQLite SQL statements. "
         "No markdown. "
+        "No code fences. "
+        "Do not wrap SQL in ```sql blocks. "
+        "Return raw SQL only. "
         "No comments. "
         "No explanation.\n\n";
 
@@ -317,6 +323,7 @@ void Tablegenerator::showEvent(QShowEvent *event)
     QWidget::showEvent(event);
 
     ui->plainTextEdit_dal->clear();
+    ui->plainTextEdit_ai->clear();
 
     if (!m_dataBaseManager->isConnected())
     {
@@ -324,6 +331,9 @@ void Tablegenerator::showEvent(QShowEvent *event)
             "No database connection available."
             );
 
+        ui->plainTextEdit_ai->setPlainText(
+            "No database connection available."
+            );
         return;
     }
 
@@ -335,18 +345,32 @@ void Tablegenerator::showEvent(QShowEvent *event)
             "Connected database: %1\n\nReady to generate DAL."
             ).arg(driver)
         );
+
+    ui->plainTextEdit_ai->setPlainText(
+        QString(
+            "Connected database: %1\n\nReady to generate SQL."
+            ).arg(driver)
+        );
 }
 
 void Tablegenerator::refreshUi()
 {
+    ui->pushButton_normalize->setHidden(true);
+
     ProgrammingLanguage programmingLanguage;
     ui->pushButton_generatedal->setText("Generate (DAL) " +  programmingLanguage.languageTypeToText(m_selectedLanguage));
     ui->pushButton_outputdal->setText("Output DAL " + programmingLanguage.languageTypeToText(m_selectedLanguage) + " Code");
     ui->checkBox_apiaccess->setText("Generate secure " + programmingLanguage.languageTypeToText(m_selectedLanguage) + " database access layer");
+    ui->label_classfolderdir->setText(programmingLanguage.languageTypeToText(m_selectedLanguage) + "-Class-Folder-Direction");
+
 
     if (!m_dataBaseManager->isConnected())
     {
         ui->plainTextEdit_dal->setPlainText(
+            "No database connection available."
+            );
+
+        ui->plainTextEdit_ai->setPlainText(
             "No database connection available."
             );
 
