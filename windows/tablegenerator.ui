@@ -17,8 +17,8 @@
    <property name="geometry">
     <rect>
      <x>90</x>
-     <y>80</y>
-     <width>551</width>
+     <y>110</y>
+     <width>221</width>
      <height>31</height>
     </rect>
    </property>
@@ -87,7 +87,7 @@
    <property name="geometry">
     <rect>
      <x>40</x>
-     <y>80</y>
+     <y>110</y>
      <width>41</width>
      <height>31</height>
     </rect>
@@ -165,7 +165,7 @@
    <property name="geometry">
     <rect>
      <x>40</x>
-     <y>170</y>
+     <y>160</y>
      <width>271</width>
      <height>111</height>
     </rect>
@@ -191,7 +191,7 @@
    <property name="geometry">
     <rect>
      <x>360</x>
-     <y>170</y>
+     <y>160</y>
      <width>281</width>
      <height>111</height>
     </rect>
@@ -243,8 +243,8 @@
    <property name="geometry">
     <rect>
      <x>90</x>
-     <y>60</y>
-     <width>141</width>
+     <y>90</y>
+     <width>221</width>
      <height>21</height>
     </rect>
    </property>
@@ -255,9 +255,9 @@
   <widget class="QLineEdit" name="lineEdit_dalpath">
    <property name="geometry">
     <rect>
-     <x>90</x>
-     <y>130</y>
-     <width>551</width>
+     <x>410</x>
+     <y>110</y>
+     <width>231</width>
      <height>31</height>
     </rect>
    </property>
@@ -268,8 +268,8 @@
   <widget class="QPushButton" name="pushButton_addoutputdal">
    <property name="geometry">
     <rect>
-     <x>40</x>
-     <y>130</y>
+     <x>360</x>
+     <y>110</y>
      <width>41</width>
      <height>31</height>
     </rect>
@@ -281,9 +281,9 @@
   <widget class="QLabel" name="label_daloutput">
    <property name="geometry">
     <rect>
-     <x>90</x>
-     <y>110</y>
-     <width>161</width>
+     <x>410</x>
+     <y>90</y>
+     <width>231</width>
      <height>21</height>
     </rect>
    </property>
