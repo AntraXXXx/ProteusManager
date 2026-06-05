@@ -1,9 +1,8 @@
 #include "tablegenerator.h"
 #include "ui_tablegenerator.h"
 //#include "../utils/textfilemanager.h"
-#include "../utils/classscanner.h"
-#include "../utils/classparser.h"
-#include "windows/ui_tablegenerator.h"
+// #include "../utils/classscanner.h"
+// #include "../utils/classparser.h"
 
 Tablegenerator::Tablegenerator(DatabaseManager *databaseManager,
                                QWidget *parent)

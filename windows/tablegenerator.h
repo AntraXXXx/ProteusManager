@@ -10,6 +10,8 @@
 #include "../client/ollamaclient.h"
 #include "../database/databasemanager.h"
 #include "../utils/programminglanguage.h"
+#include "../utils/classscanner.h"
+#include "../utils/classparser.h"
 
 namespace Ui {
 class Tablegenerator;

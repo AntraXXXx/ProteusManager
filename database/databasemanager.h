@@ -16,7 +16,6 @@ public:
     bool isValidSql(const QString& sql);
     void setConnection(const bool connected);
     void setDatabasePath(const QString& path);
-public:
     QString getSqlConnectionName() const;
     QString buildSchemaDescription();
     QStringList getColumnNames(const QString& tableName);
