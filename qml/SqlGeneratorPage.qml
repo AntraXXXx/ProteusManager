@@ -38,7 +38,7 @@ Page {
                 spacing: 14
 
                 Label {
-                    text: "Class Source"
+                    text: "Classes Source-Folder"
                     font.pixelSize: 22
                     font.bold: true
                 }
@@ -51,12 +51,13 @@ Page {
                         id: folderDialog
                         title: "Select script class Folder"
                         onAccepted: {
-                            let path = folderDialog.currentFolder.toString();
+                            let path = selectedFolder.toString();
                             path = path.replace(/^file:\/\/\//, "");
                             if (path.match(/^\/[a-zA-Z]:\//)) {
                                 path = path.substring(1);
                             }
                             lineEdit_scriptclassespath.text = path;
+                            appController.setClassesFolderPath(path)
                         }
                     }
 
@@ -77,24 +78,27 @@ Page {
                         Layout.preferredWidth: 750
                         Layout.preferredHeight: 35
                         Layout.alignment: Qt.AlignHCenter
-
+                        text: appController.classesFolderPath
                         font.pixelSize: 16
                         leftPadding: 18
 
                         horizontalAlignment: TextInput.AlignLeft
                         verticalAlignment: TextInput.AlignVCenter
                         placeholderText: "Classes folder..."
-                    }
 
-
-                    Connections {
-                        target: appController
-
-                        function onClassesFolderPathChanged(path)
-                        {
-                            lineEdit_scriptclassespath.text = path
+                        onTextChanged: {
+                            appController.setClassesFolderPath(text)
                         }
                     }
+
+                     // Connections {
+                     //     target: appController
+
+                     //     function onClassesFolderPathChanged(path)
+                     //     {
+                     //         lineEdit_scriptclassespath.text = path
+                     //     }
+                     // }
                 }
             }
         }
@@ -147,69 +151,69 @@ Page {
                     font.pixelSize: 22
                     font.bold: true
                 }
-
-                TextArea {
-                    id: lineEdit_generatedsqlcodeoutput
+                ScrollView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    font.family: "Consolas"
-                    font.pixelSize: 15
-                    wrapMode: TextEdit.WrapAnywhere
-                    placeholderText: "Generated SQL will appear here..."
+                    Layout.preferredHeight: 250
+                    clip: true
+                        TextArea {
+                            id: lineEdit_generatedsqlcodeoutput
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            font.family: "Consolas"
+                            font.pixelSize: 15
+                            wrapMode: TextEdit.WrapAnywhere
+                            placeholderText: "Generated SQL will appear here..."
+                            height: parent.height
+                        }
+                    }
                 }
             }
-        }
-
         ProgressBar {
             Layout.fillWidth: true
             visible: false
         }
-
         RowLayout {
             Layout.fillWidth: true
             spacing: 14
 
             Connections {
-                target: appController
+                 target: appController
 
-                function onClassesFolderPathChanged(path) {
-                    lineEdit_scriptclassespath.text = path
-                }
+                //  function onClassesFolderPathChanged(path) {
+                //      lineEdit_scriptclassespath.text = path
+                // }
 
-                function onSqlOutputChanged(text) {
-                    lineEdit_generatedsqlcodeoutput.text = text
-                }
+                 function onSqlOutputChanged(text) {
+                     lineEdit_generatedsqlcodeoutput.text = text
+                 }
 
-                function onSqlGenerationLoadingChanged(loading) {
-                    progressBar_loading.visible = loading
-                }
+                 // function onSqlGenerationLoadingChanged(loading) {
+                 //     progressBar_loading.visible = loading
+                 // }
 
-                function onSqlGenerateEnabledChanged(enabled) {
-                    pushButton_generate.enabled = enabled
-                }
+                 // function onSqlGenerateEnabledChanged(enabled) {
+                 //     pushButton_generate.enabled = enabled
+                 // }
 
-                function onWarningOccurred(title, message) {
-                    lineEdit_generatedsqlcodeoutput.text = title + "\n" + message
-                }
+                 function onWarningOccurred(title, message) {
+                     lineEdit_generatedsqlcodeoutput.text = title + "\n" + message
+                 }
             }
 
             Button {
                 id: pushButton_generate
                 text: "Generate SQL"
+                enabled: appController.executable && !appController.loading
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
                 onClicked: {
-                    progressBar_loading.visible = true
                     appController.setClassesFolderPath(lineEdit_scriptclassespath.text)
                     appController.setAddAuditFields(auditFieldsCheckBox.checked)
                     appController.onGenerateSqlCode()
+                    button_SqlBack.enabled = false
+                   // pushButton_generate.enabled = false
                 }
-            }
-
-            ProgressBar {
-                id: progressBar_loading
-                visible: false
-                indeterminate: true
             }
 
             // Button {
@@ -219,9 +223,23 @@ Page {
             // }
 
             Button {
+                id: button_execute
                 text: "Execute SQL"
+                enabled: appController.executable && !appController.loading && lineEdit_generatedsqlcodeoutput.text.length !== 0
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
+                onClicked: {
+                    appController.onExecuteSqlCode(
+                        lineEdit_generatedsqlcodeoutput.text
+                    )
+                }
+            }
+
+            ProgressBar {
+                id: progressBar_loading
+                visible: appController.executable && appController.loading
+                indeterminate: true
+                Layout.preferredWidth: 600
             }
 
             Item {
@@ -229,11 +247,12 @@ Page {
             }
 
             Button {
+                id: button_SqlBack
                 text: "Back"
                 font.pixelSize: 16
                 Layout.preferredWidth: 120
                 Layout.preferredHeight: 48
-
+                enabled: appController.executable && appController.loading && lineEdit_generatedsqlcodeoutput.text.length !== 0
                 onClicked: {
                     appStack.pop()
                 }

@@ -7,9 +7,14 @@ AppController::AppController(QObject *parent)
 {
     QSettings settings("DataBaseSettings", "Proteus");
 
-    m_isLocalDatabase =
-        settings.value("database/isLocalConnection", true).toBool();
+    m_isLocalDatabase = settings.value("database/isLocalConnection", true).toBool();
+    m_dalOutputPath = settings.value("dal/outputPath","").toString();
+    m_classFolderPath = settings.value("classes/scripts", "").toString();
+   // emit dalOutputPathChanged(m_classPath);
+    emit dalOutputPathChanged();
+    emit classesFolderPathChanged();
 
+    // SqlReceived
     connect(
         m_ollamaClient,
         &OllamaClient::sqlReceived,
@@ -17,8 +22,22 @@ AppController::AppController(QObject *parent)
         [this](const QString& sql)
         {
             emit sqlOutputChanged(sql);
-            emit sqlGenerationLoadingChanged(false);
-            emit sqlGenerateEnabledChanged(true);
+
+            QSettings settings("DataBaseSettings", "Proteus");
+            m_classFolderPath = settings.value("classes/scripts").toString();
+            emit classesFolderPathChanged();
+
+            bool valid =
+                m_dataBaseManager->isValidSql(sql);
+
+            if (m_isExecutable != valid)
+            {
+                m_isExecutable = valid;
+                emit executableChanged();
+            }
+
+            m_loading = false;
+            emit loadingChanged();
         });
 
     connect(
@@ -43,9 +62,20 @@ AppController::AppController(QObject *parent)
         [this](const QString& code)
         {
             emit dalOutputChanged(code);
+            QSettings settings("DataBaseSettings", "Proteus");
+            m_dalOutputPath = settings.value("dal/outputPath").toString();
+            emit dalOutputPathChanged();
+            m_isExecutable = true;
+            emit executableChanged();
+            m_loading = false;
+            emit loadingChanged();
         });
 
     fetchModels();
+    m_isExecutable = true;
+    emit executableChanged();
+    m_loading = false;
+    emit loadingChanged();
 }
 
 bool AppController::databaseConnected() const
@@ -53,9 +83,24 @@ bool AppController::databaseConnected() const
     return m_databaseConnected;
 }
 
+bool AppController::loading() const
+{
+    return m_loading;
+}
+
 QString AppController::selectedModel() const
 {
     return m_selectedModel;
+}
+
+QString AppController::dalOutputPath() const
+{
+    return m_dalOutputPath;
+}
+
+QString AppController::classesFolderPath() const
+{
+    return m_classFolderPath;
 }
 
 bool AppController::isLocalDatabase() const
@@ -117,6 +162,11 @@ QStringList AppController::codeLanguages() const
     };
 }
 
+bool AppController::executable() const
+{
+    return m_isExecutable;
+}
+
 void AppController::setSelectedLanguage(int index)
 {
     m_selectedLanguageType =
@@ -147,11 +197,30 @@ void AppController::setIsLocalDatabase(bool isLocal)
     emit isLocalDatabaseChanged();
 }
 
+void AppController::setDalOutputPath(const QString& path)
+{
+    if (m_dalOutputPath == path)
+        return;
+
+    m_dalOutputPath = path;
+
+    QSettings settings("DataBaseSettings", "Proteus");
+    settings.setValue("dal/outputPath", path);
+
+    emit dalOutputPathChanged();
+}
+
 void AppController::setClassesFolderPath(const QString& path)
 {
-    m_classPath = path;
+    if (m_classFolderPath == path)
+        return;
 
-    emit classesFolderPathChanged(path);
+    m_classFolderPath = path;
+
+    QSettings settings("DataBaseSettings", "Proteus");
+    settings.setValue("classes/scripts", path);
+
+    emit classesFolderPathChanged();
 }
 
 void AppController::setAddAuditFields(bool enabled)
@@ -161,18 +230,18 @@ void AppController::setAddAuditFields(bool enabled)
 
 void AppController::onGenerateSqlCode()
 {
-    emit sqlGenerationLoadingChanged(true);
-    emit sqlGenerateEnabledChanged(false);
+    m_loading = true;
+    emit loadingChanged();
 
-    if (m_classPath.isEmpty())
+    if (m_classFolderPath.isEmpty())
     {
         emit warningOccurred(
             "Missing path",
             "Please select a class folder first."
             );
 
-        emit sqlGenerationLoadingChanged(false);
-        emit sqlGenerateEnabledChanged(true);
+        m_loading = false;
+        emit loadingChanged();
         return;
     }
 
@@ -183,8 +252,8 @@ void AppController::onGenerateSqlCode()
             "Please select an AI model first."
             );
 
-        emit sqlGenerationLoadingChanged(false);
-        emit sqlGenerateEnabledChanged(true);
+        m_loading = false;
+        emit loadingChanged();
         return;
     }
 
@@ -195,8 +264,8 @@ void AppController::onGenerateSqlCode()
             "Please connect to a database first."
             );
 
-        emit sqlGenerationLoadingChanged(false);
-        emit sqlGenerateEnabledChanged(true);
+        m_loading = false;
+        emit loadingChanged();
         return;
     }
 
@@ -207,7 +276,7 @@ void AppController::onGenerateSqlCode()
 
     QList<ScannedClassFile> files =
         scanner.scanAndReadClassFiles(
-            m_classPath,
+            m_classFolderPath,
             m_selectedLanguageType
             );
 
@@ -218,8 +287,8 @@ void AppController::onGenerateSqlCode()
             "No class files were found in the selected folder."
             );
 
-        emit sqlGenerationLoadingChanged(false);
-        emit sqlGenerateEnabledChanged(true);
+        m_loading = false;
+        emit loadingChanged();
         return;
     }
 
@@ -359,8 +428,12 @@ void AppController::onGenerateSqlCode()
 
 void AppController::onGenerateDalCode(bool secureAccess)
 {
+    m_loading = true;
+    emit loadingChanged();
     if (!m_dataBaseManager->isConnected())
     {
+        m_loading = false;
+        emit loadingChanged();
         emit dalStatusChanged(
             "No database connection available."
             );
@@ -434,12 +507,15 @@ void AppController::onGenerateDalCode(bool secureAccess)
 
 void AppController::onExportDalCode(const QString& response, const QString& outputPath)
 {
+    m_loading = true;
+    emit loadingChanged();
     if (response.isEmpty())
     {
         emit dalExportFinished(
             "No DAL code available."
             );
-
+        m_loading = false;
+        emit loadingChanged();
         return;
     }
 
@@ -448,7 +524,8 @@ void AppController::onExportDalCode(const QString& response, const QString& outp
         emit dalExportFinished(
             "No output path selected."
             );
-
+        m_loading = false;
+        emit loadingChanged();
         return;
     }
 
@@ -489,7 +566,33 @@ void AppController::onExportDalCode(const QString& response, const QString& outp
         }
     }
 
+    m_loading = false;
+    emit loadingChanged();
     emit dalExportFinished(
         "DAL files saved."
         );
+}
+
+QString AppController::onExecuteSqlCode(const QString& response){
+    m_loading = true;
+    emit loadingChanged();
+    if (!m_dataBaseManager->isValidSql(response))
+    {
+        QString message = "Invalid SQL \n";
+        message += "The AI response does not contain valid SQL.";
+        m_isExecutable = false;
+        emit executableChanged();
+        m_loading = false;
+        emit loadingChanged();
+        return message;
+    }
+
+    if (m_dataBaseManager->executeQuery(response))
+    {
+        m_isExecutable = false;
+        emit executableChanged();
+        m_loading = false;
+        emit loadingChanged();
+        return response;
+    }
 }

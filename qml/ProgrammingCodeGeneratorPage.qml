@@ -51,12 +51,13 @@ Page {
                         id: folderDialog
                         title: "Select script class Folder"
                         onAccepted: {
-                            let path = folderDialog.currentFolder.toString();
+                            let path = selectedFolder.toString();
                             path = path.replace(/^file:\/\/\//, "");
                             if (path.match(/^\/[a-zA-Z]:\//)) {
                                 path = path.substring(1);
                             }
                             lineEdit_scriptoutputfolder.text = path;
+                            appController.setDalOutputPath(path)
                         }
                     }
 
@@ -77,24 +78,28 @@ Page {
                         Layout.preferredWidth: 750
                         Layout.preferredHeight: 35
                         Layout.alignment: Qt.AlignHCenter
-
+                        text: appController.dalOutputPath
                         font.pixelSize: 16
                         leftPadding: 18
 
                         horizontalAlignment: TextInput.AlignLeft
                         verticalAlignment: TextInput.AlignVCenter
 
+                        onTextChanged: {
+                            appController.setDalOutputPath(text)
+                        }
+
                         placeholderText: "DAL output folder..."
                     }
 
-                    Connections {
-                        target: appController
+                    // Connections {
+                    //     target: appController
 
-                        function onDalOutputPathChanged(path)
-                        {
-                            lineEdit_scriptoutputfolder.text = path
-                        }
-                    }
+                    //     function dalOutputChanged(path)
+                    //     {
+                    //         lineEdit_scriptoutputfolder.text = path
+                    //     }
+                    // }
                 }
             }
         }
@@ -150,15 +155,22 @@ Page {
                     font.bold: true
                 }
 
-                TextArea {
-                    id: plainTextEdit_dal
+                ScrollView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    font.family: "Consolas"
-                    font.pixelSize: 15
-                    wrapMode: TextEdit.WrapAnywhere
-                    placeholderText: "Generated database access layer code will appear here..."
-                }
+                    Layout.preferredHeight: 250
+                    clip: true
+                        TextArea {
+                            id: plainTextEdit_dal
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            font.family: "Consolas"
+                            font.pixelSize: 15
+                            wrapMode: TextEdit.WrapAnywhere
+                            placeholderText: "Generated database access layer code will appear here..."
+                            height: parent.height
+                        }
+                    }
 
                 Connections {
                     target: appController
@@ -184,9 +196,11 @@ Page {
             spacing: 14
 
             Button {
+                id: button_generateDal
                 text: "Generate DAL"
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
+                enabled: !appController.loading  || lineEdit_generatedsqlcodeoutput.text.length === 0
                 onClicked: {
                     plainTextEdit_dal.text =
                             "Generating database access layer..."
@@ -194,30 +208,43 @@ Page {
                     appController.onGenerateDalCode(
                         checkBox_apiaccess.checked
                     )
+                   // button_dalBack.enabled = !appController.loading
+                    //button_generateDal.enabled = !appController.loading
                 }
             }
 
             Button {
+                id: button_executeDal
                 text: "Export DAL"
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
-
+                enabled: !appController.executable && !appController.loading
                 onClicked: {
                     appController.onExportDalCode(
                         plainTextEdit_dal.text,
                         lineEdit_scriptoutputfolder.text
                     )
+                    button_executeDal.enabled = false
+                    button_dalBack.enabled = true
+                    button_generateDal.enabled = true
                 }
+            }
+            ProgressBar {
+                id: progressBar_loading
+                visible: appController.loading
+                indeterminate: true
+                Layout.preferredWidth: 600
             }
             Item {
                 Layout.fillWidth: true
             }
             Button {
+                id: button_dalBack
                 text: "Back"
                 font.pixelSize: 16
                 Layout.preferredWidth: 120
                 Layout.preferredHeight: 48
-
+                enabled: appController.executable || lineEdit_generatedsqlcodeoutput.text.length === 0
                 onClicked: {
                     appStack.pop()
                 }
