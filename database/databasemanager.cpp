@@ -5,6 +5,7 @@
 #include <QSqlError>
 
 #include <QDebug>
+#include <QRegularExpression>
 
 namespace
 {
@@ -275,10 +276,57 @@ QStringList DatabaseManager::getColumnNames(
 bool DatabaseManager::isValidSql(
     const QString& sql)
 {
-    QString upperSql = sql.toUpper();
+    const QString trimmedSql =
+        sql.trimmed();
 
-    return upperSql.contains("CREATE TABLE")
-           || upperSql.contains("CREATE INDEX")
-           || upperSql.contains("ALTER TABLE");
+    if (trimmedSql.isEmpty())
+        return false;
+
+    const QRegularExpression destructiveStatement(
+        "\\b(DROP|DELETE|TRUNCATE|UPDATE|INSERT|REPLACE|ATTACH|DETACH|VACUUM)\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QRegularExpression createTableStatement(
+        "^CREATE\\s+TABLE\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QRegularExpression createIndexStatement(
+        "^CREATE\\s+(UNIQUE\\s+)?INDEX\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QRegularExpression alterAddColumnStatement(
+        "^ALTER\\s+TABLE\\b[\\s\\S]*\\bADD\\s+COLUMN\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    bool hasValidStatement = false;
+
+    const QStringList statements =
+        trimmedSql.split(
+            ";",
+            Qt::SkipEmptyParts);
+
+    for (const QString& statement : statements)
+    {
+        const QString compactStatement =
+            statement.trimmed().simplified();
+
+        if (compactStatement.isEmpty())
+            continue;
+
+        if (destructiveStatement.match(compactStatement).hasMatch())
+            return false;
+
+        const bool isAllowedSchemaStatement =
+            createTableStatement.match(compactStatement).hasMatch()
+            || createIndexStatement.match(compactStatement).hasMatch()
+            || alterAddColumnStatement.match(compactStatement).hasMatch();
+
+        if (!isAllowedSchemaStatement)
+            return false;
+
+        hasValidStatement = true;
+    }
+
+    return hasValidStatement;
 }
 
