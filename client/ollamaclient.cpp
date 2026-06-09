@@ -129,7 +129,6 @@ void OllamaClient::generate(const QString& model,
         }
         else if (type == GenerateType::Dal)
         {
-
             response = response.trimmed();
 
             emit dalReceived(response);

@@ -204,15 +204,16 @@ Page {
             Button {
                 id: pushButton_generate
                 text: "Generate SQL"
-                enabled: appController.executable && !appController.loading
+                enabled: !appController.loading
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
                 onClicked: {
                     appController.setClassesFolderPath(lineEdit_scriptclassespath.text)
                     appController.setAddAuditFields(auditFieldsCheckBox.checked)
                     appController.onGenerateSqlCode()
-                    button_SqlBack.enabled = false
+                    //button_SqlBack.enabled = false
                    // pushButton_generate.enabled = false
+                    //button_execute.enabled = true
                 }
             }
 
@@ -229,7 +230,7 @@ Page {
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
                 onClicked: {
-                    appController.onExecuteSqlCode(
+                    lineEdit_generatedsqlcodeoutput.text = appController.onExecuteSqlCode(
                         lineEdit_generatedsqlcodeoutput.text
                     )
                 }
@@ -237,7 +238,7 @@ Page {
 
             ProgressBar {
                 id: progressBar_loading
-                visible: appController.executable && appController.loading
+                visible: appController.loading
                 indeterminate: true
                 Layout.preferredWidth: 600
             }
@@ -252,7 +253,7 @@ Page {
                 font.pixelSize: 16
                 Layout.preferredWidth: 120
                 Layout.preferredHeight: 48
-                enabled: appController.executable && appController.loading && lineEdit_generatedsqlcodeoutput.text.length !== 0
+                enabled: !appController.loading
                 onClicked: {
                     appStack.pop()
                 }

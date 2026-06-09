@@ -1,9 +1,13 @@
 #include "appcontroller.h"
 
+#include <QDir>
+#include <QFile>
+#include <QTextStream>
+
 AppController::AppController(QObject *parent)
     : QObject(parent)
     , m_ollamaClient(new OllamaClient(this))
-    , m_dataBaseManager(new DatabaseManager())
+    , m_dataBaseManager(std::make_unique<DatabaseManager>())
 {
     QSettings settings("DataBaseSettings", "Proteus");
 
@@ -529,11 +533,24 @@ void AppController::onExportDalCode(const QString& response, const QString& outp
         return;
     }
 
+    QDir outputDir(outputPath);
+    if (!outputDir.exists())
+    {
+        emit dalExportFinished(
+            "Selected output path does not exist."
+            );
+        m_loading = false;
+        emit loadingChanged();
+        return;
+    }
+
     QStringList sections =
         response.split(
             "FILE:",
             Qt::SkipEmptyParts
             );
+
+    int filesSaved = 0;
 
     for (const QString& section : sections)
     {
@@ -546,15 +563,21 @@ void AppController::onExportDalCode(const QString& response, const QString& outp
         if (lineEnd == -1)
             continue;
 
-        QString fileName =
+        QString rawFileName =
             trimmed.left(lineEnd).trimmed();
+
+        if (rawFileName.isEmpty()
+            || rawFileName.contains('/')
+            || rawFileName.contains('\\')
+            || rawFileName.contains(':'))
+        {
+            continue;
+        }
 
         QString fileContent =
             trimmed.mid(lineEnd + 1);
 
-        QFile file(
-            outputPath + "/" + fileName
-            );
+        QFile file(outputDir.filePath(rawFileName));
 
         if (file.open(
                 QIODevice::WriteOnly |
@@ -563,28 +586,39 @@ void AppController::onExportDalCode(const QString& response, const QString& outp
             QTextStream out(&file);
             out << fileContent;
             file.close();
+            ++filesSaved;
         }
     }
 
     m_loading = false;
     emit loadingChanged();
+
+    if (filesSaved == 0)
+    {
+        emit dalExportFinished(
+            "No valid DAL files were found in the AI response."
+            );
+        return;
+    }
+
     emit dalExportFinished(
-        "DAL files saved."
+        QString("DAL files saved: %1").arg(filesSaved)
         );
 }
 
-QString AppController::onExecuteSqlCode(const QString& response){
+QString AppController::onExecuteSqlCode(const QString& response)
+{
     m_loading = true;
     emit loadingChanged();
+
     if (!m_dataBaseManager->isValidSql(response))
     {
-        QString message = "Invalid SQL \n";
-        message += "The AI response does not contain valid SQL.";
         m_isExecutable = false;
         emit executableChanged();
         m_loading = false;
         emit loadingChanged();
-        return message;
+
+        return "Invalid SQL\nThe AI response does not contain valid SQL.";
     }
 
     if (m_dataBaseManager->executeQuery(response))
@@ -595,4 +629,9 @@ QString AppController::onExecuteSqlCode(const QString& response){
         emit loadingChanged();
         return response;
     }
+
+    m_loading = false;
+    emit loadingChanged();
+
+    return "SQL execution failed.";
 }

@@ -200,7 +200,7 @@ Page {
                 text: "Generate DAL"
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
-                enabled: !appController.loading  || lineEdit_generatedsqlcodeoutput.text.length === 0
+                enabled: !appController.loading
                 onClicked: {
                     plainTextEdit_dal.text =
                             "Generating database access layer..."
@@ -218,15 +218,14 @@ Page {
                 text: "Export DAL"
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
-                enabled: !appController.executable && !appController.loading
+                enabled: !appController.loading
+                         && plainTextEdit_dal.text.indexOf("FILE:") !== -1
+                         && lineEdit_scriptoutputfolder.text.length > 0
                 onClicked: {
                     appController.onExportDalCode(
                         plainTextEdit_dal.text,
                         lineEdit_scriptoutputfolder.text
                     )
-                    button_executeDal.enabled = false
-                    button_dalBack.enabled = true
-                    button_generateDal.enabled = true
                 }
             }
             ProgressBar {
@@ -244,7 +243,7 @@ Page {
                 font.pixelSize: 16
                 Layout.preferredWidth: 120
                 Layout.preferredHeight: 48
-                enabled: appController.executable || lineEdit_generatedsqlcodeoutput.text.length === 0
+                enabled: !appController.loading
                 onClicked: {
                     appStack.pop()
                 }

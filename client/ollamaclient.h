@@ -22,15 +22,18 @@ public:
     void generate(const QString& model, const QString& prompt, GenerateType type);
     void checkConnection();
     void fetchModels();
+    bool isValidSqlCode();
 signals:
     void connectionChecked(bool isRunning);
     void modelsFetched(const QStringList& models);
     void errorOccurred(const QString& errorMessage);
     void sqlReceived(const QString& sql);
     void dalReceived(const QString& code);
+    void isSqlCode(bool isSqlCode);
 public:
     QString getLastResponse() const;
-    GenerateType m_generateType = GenerateType::Sql;
+    GenerateType generateType = GenerateType::Sql;
+    bool isValidSql;
 private:
     QNetworkAccessManager *m_networkManager;
     QString m_lastResponse;

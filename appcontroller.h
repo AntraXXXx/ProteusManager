@@ -7,6 +7,8 @@
 #include <QSettings>
 #include <QFileDialog>
 
+#include <memory>
+
 #include "client/ollamaclient.h"
 #include "database/databasemanager.h"
 #include "utils/programminglanguage.h"
@@ -72,8 +74,8 @@ private:
     QString m_dalOutputPath;
 
     OllamaClient *m_ollamaClient;
-    DatabaseManager *m_dataBaseManager;
-    Tablegenerator *m_tableGenerator;
+    std::unique_ptr<DatabaseManager> m_dataBaseManager;
+    Tablegenerator *m_tableGenerator = nullptr;
 
     bool m_databaseConnected = false;
     bool m_isLocalDatabase = true;

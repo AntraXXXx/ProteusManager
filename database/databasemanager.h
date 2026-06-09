@@ -2,11 +2,12 @@
 #define DATABASEMANAGER_H
 
 #include <QString>
+#include <QStringList>
 
 class DatabaseManager
 {
 public:
-    bool openDatabase(QString& connectionName, QString& databasePath);
+    bool openDatabase(const QString& connectionName, const QString& databasePath);
     bool isLocalDatabase(bool isLocal);
     bool isConnected() const;
     bool executeQuery(const QString& executeSqlCommand);
@@ -23,8 +24,9 @@ public:
     QString databaseDriver() const;
 private:
     QString m_databasePath;
-    bool m_isConnected;
+    bool m_isConnected = false;
     QString m_dataBaseConnectionName;
+    bool m_isValidSql = false;
 };
 
 

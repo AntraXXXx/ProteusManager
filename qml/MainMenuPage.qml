@@ -5,8 +5,8 @@ import QtQuick.Dialogs
 
 Page {
     property StackView appStack
-    property bool isLocalDatabase: true
-    property bool databaseConnected: false
+    property bool isLocalDatabase: appController.isLocalDatabase
+    property bool databaseConnected: appController.databaseConnected
 
     background: Rectangle {
         color: "#eef2f7"
