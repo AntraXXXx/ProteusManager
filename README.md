@@ -55,7 +55,6 @@ The goal of the project is to reduce manual effort during database development a
 
 ---
 
-<<<<<<< HEAD
 # AI Requirements
 
 ProteusManager requires a locally running Ollama instance and at least one installed AI model.
@@ -78,7 +77,6 @@ AI model before SQL or DAL generation can run.
 Setup instructions are available in:
 
 - [docs/AI_SETUP.md](docs/AI_SETUP.md)
->>>>>>> dev
 
 ---
 
