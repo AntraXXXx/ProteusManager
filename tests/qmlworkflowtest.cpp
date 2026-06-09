@@ -21,6 +21,13 @@ class FakeAppController : public QObject
     Q_PROPERTY(QString dalOutputPath READ dalOutputPath NOTIFY dalOutputPathChanged)
     Q_PROPERTY(QString classesFolderPath READ classesFolderPath NOTIFY classesFolderPathChanged)
     Q_PROPERTY(QString lastSqlOutputPath READ lastSqlOutputPath NOTIFY lastSqlOutputPathChanged)
+    Q_PROPERTY(QString ollamaEndpoint READ ollamaEndpoint WRITE setOllamaEndpoint NOTIFY ollamaEndpointChanged)
+    Q_PROPERTY(QString aiConnectionStatus READ aiConnectionStatus NOTIFY aiEnvironmentChanged)
+    Q_PROPERTY(QString aiSetupInstructions READ aiSetupInstructions NOTIFY aiEnvironmentChanged)
+    Q_PROPERTY(QStringList availableModels READ availableModels NOTIFY availableModelsChanged)
+    Q_PROPERTY(bool ollamaInstalled READ ollamaInstalled NOTIFY aiEnvironmentChanged)
+    Q_PROPERTY(bool ollamaRunning READ ollamaRunning NOTIFY aiEnvironmentChanged)
+    Q_PROPERTY(bool aiEnvironmentReady READ aiEnvironmentReady NOTIFY aiEnvironmentChanged)
 
 public:
     QString selectedLanguageName() const { return m_languageName; }
@@ -32,6 +39,13 @@ public:
     QString dalOutputPath() const { return m_dalOutputPath; }
     QString classesFolderPath() const { return m_classesFolderPath; }
     QString lastSqlOutputPath() const { return m_lastSqlOutputPath; }
+    QString ollamaEndpoint() const { return m_ollamaEndpoint; }
+    QString aiConnectionStatus() const { return m_aiConnectionStatus; }
+    QString aiSetupInstructions() const { return m_aiSetupInstructions; }
+    QStringList availableModels() const { return m_availableModels; }
+    bool ollamaInstalled() const { return m_ollamaInstalled; }
+    bool ollamaRunning() const { return m_ollamaRunning; }
+    bool aiEnvironmentReady() const { return m_aiEnvironmentReady; }
 
     Q_INVOKABLE QStringList codeLanguages() const
     {
@@ -48,6 +62,19 @@ public:
     {
         m_selectedModel = model;
         emit selectedModelChanged();
+    }
+
+    Q_INVOKABLE void setOllamaEndpoint(const QString& endpoint)
+    {
+        m_ollamaEndpoint = endpoint;
+        emit ollamaEndpointChanged();
+    }
+
+    Q_INVOKABLE void refreshAiEnvironment()
+    {
+        emit aiEnvironmentChanged();
+        emit availableModelsChanged();
+        emit modelsFetched(m_availableModels);
     }
 
     Q_INVOKABLE void setDalOutputPath(const QString& path)
@@ -135,6 +162,9 @@ signals:
     void classesFolderPathChanged();
     void lastSqlOutputPathChanged();
     void sqlOutputSaved(const QString& path);
+    void ollamaEndpointChanged();
+    void aiEnvironmentChanged();
+    void availableModelsChanged();
     void dalStatusChanged(const QString& status);
     void dalExportFinished(const QString& message);
 
@@ -148,6 +178,13 @@ private:
     QString m_dalOutputPath = "C:/temp";
     QString m_classesFolderPath = "C:/classes";
     QString m_lastSqlOutputPath;
+    QString m_ollamaEndpoint = "http://localhost:11434";
+    QString m_aiConnectionStatus = "AI ready. Models installed: 1";
+    QString m_aiSetupInstructions = "AI environment is ready.";
+    QStringList m_availableModels = {"agent-one"};
+    bool m_ollamaInstalled = true;
+    bool m_ollamaRunning = true;
+    bool m_aiEnvironmentReady = true;
 };
 
 namespace
@@ -252,6 +289,13 @@ void QmlWorkflowTest::loadsMainMenuPage()
             page.get(),
             "text",
             "Proteus Manager")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "AI Status:")
         != nullptr);
 }
 

@@ -200,7 +200,7 @@ Page {
                 text: "Generate DAL"
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
-                enabled: !appController.loading
+                enabled: !appController.loading && appController.aiEnvironmentReady
                 onClicked: {
                     plainTextEdit_dal.text =
                             "Generating database access layer..."
