@@ -10,9 +10,61 @@ AppController::AppController(QObject *parent)
     m_isLocalDatabase = settings.value("database/isLocalConnection", true).toBool();
     m_dalOutputPath = settings.value("dal/outputPath","").toString();
     m_classFolderPath = settings.value("classes/scripts", "").toString();
+    m_ollamaEndpoint =
+        settings.value(
+            "ai/ollamaEndpoint",
+            OllamaEnvironment::defaultEndpoint()
+            ).toString();
+
+    m_ollamaClient->setBaseUrl(QUrl(m_ollamaEndpoint));
    // emit dalOutputPathChanged(m_classPath);
     emit dalOutputPathChanged();
     emit classesFolderPathChanged();
+    emit ollamaEndpointChanged();
+
+    connect(
+        m_ollamaClient,
+        &OllamaClient::connectionChecked,
+        this,
+        [this](bool isRunning)
+        {
+            m_ollamaRunning = isRunning;
+
+            if (isRunning)
+            {
+                m_aiConnectionStatus =
+                    "Connected to Ollama API.";
+                updateAiEnvironmentStatus();
+                m_ollamaClient->fetchModels();
+                return;
+            }
+
+            m_availableModels.clear();
+            m_selectedModel.clear();
+            m_aiConnectionStatus =
+                "Ollama API is not reachable.";
+            updateAiEnvironmentStatus();
+            emit selectedModelChanged();
+            emit modelsFetched(m_availableModels);
+            emit availableModelsChanged();
+        });
+
+    connect(
+        m_ollamaClient,
+        &OllamaClient::errorOccurred,
+        this,
+        [this](const QString& errorMessage)
+        {
+            m_ollamaRunning = false;
+            m_availableModels.clear();
+            m_selectedModel.clear();
+            m_aiConnectionStatus =
+                "Ollama connection failed: " + errorMessage;
+            updateAiEnvironmentStatus();
+            emit selectedModelChanged();
+            emit modelsFetched(m_availableModels);
+            emit availableModelsChanged();
+        });
 
     // SqlReceived
     connect(
@@ -58,13 +110,32 @@ AppController::AppController(QObject *parent)
         this,
         [this](const QStringList& models)
         {
-            emit modelsFetched(models);
+            m_availableModels = models;
 
             if (!models.isEmpty())
             {
-                m_selectedModel = models.first();
-                emit selectedModelChanged();
+                if (m_selectedModel.isEmpty()
+                    || !models.contains(m_selectedModel))
+                {
+                    m_selectedModel = models.first();
+                    emit selectedModelChanged();
+                }
+
+                m_aiConnectionStatus =
+                    QString("AI ready. Models installed: %1")
+                        .arg(models.size());
             }
+            else
+            {
+                m_selectedModel.clear();
+                emit selectedModelChanged();
+                m_aiConnectionStatus =
+                    "Ollama is running, but no model is installed.";
+            }
+
+            updateAiEnvironmentStatus();
+            emit modelsFetched(m_availableModels);
+            emit availableModelsChanged();
         });
 
     connect(
@@ -83,7 +154,7 @@ AppController::AppController(QObject *parent)
             emit loadingChanged();
         });
 
-    fetchModels();
+    refreshAiEnvironment();
     m_isExecutable = true;
     emit executableChanged();
     m_loading = false;
@@ -120,6 +191,26 @@ QString AppController::lastSqlOutputPath() const
     return m_lastSqlOutputPath;
 }
 
+QString AppController::ollamaEndpoint() const
+{
+    return m_ollamaEndpoint;
+}
+
+QString AppController::aiConnectionStatus() const
+{
+    return m_aiConnectionStatus;
+}
+
+QString AppController::aiSetupInstructions() const
+{
+    return m_aiSetupInstructions;
+}
+
+QStringList AppController::availableModels() const
+{
+    return m_availableModels;
+}
+
 bool AppController::isLocalDatabase() const
 {
     return m_isLocalDatabase;
@@ -127,7 +218,50 @@ bool AppController::isLocalDatabase() const
 
 void AppController::fetchModels()
 {
-    m_ollamaClient->fetchModels();
+    refreshAiEnvironment();
+}
+
+void AppController::refreshAiEnvironment()
+{
+    const OllamaInstallationStatus installation =
+        OllamaEnvironment::detectInstallation();
+
+    m_ollamaInstalled = installation.installed;
+    m_ollamaRunning = false;
+    m_aiEnvironmentReady = false;
+    m_availableModels.clear();
+
+    if (!OllamaEnvironment::isEndpointValid(m_ollamaEndpoint))
+    {
+        m_aiConnectionStatus =
+            "Invalid Ollama endpoint.";
+        updateAiEnvironmentStatus();
+        emit modelsFetched(m_availableModels);
+        emit availableModelsChanged();
+        return;
+    }
+
+    m_aiConnectionStatus =
+        "Checking Ollama environment...";
+    updateAiEnvironmentStatus();
+
+    m_ollamaClient->setBaseUrl(QUrl(m_ollamaEndpoint));
+    m_ollamaClient->checkConnection();
+}
+
+void AppController::updateAiEnvironmentStatus()
+{
+    m_aiEnvironmentReady =
+        m_ollamaRunning
+        && !m_availableModels.isEmpty();
+
+    m_aiSetupInstructions =
+        OllamaEnvironment::setupInstructions(
+            m_ollamaInstalled,
+            m_ollamaRunning,
+            m_availableModels);
+
+    emit aiEnvironmentChanged();
 }
 
 void AppController::connectDatabase(const QString& databasePath)
@@ -195,6 +329,21 @@ bool AppController::executable() const
     return m_isExecutable;
 }
 
+bool AppController::ollamaInstalled() const
+{
+    return m_ollamaInstalled;
+}
+
+bool AppController::ollamaRunning() const
+{
+    return m_ollamaRunning;
+}
+
+bool AppController::aiEnvironmentReady() const
+{
+    return m_aiEnvironmentReady;
+}
+
 void AppController::setSelectedLanguage(int index)
 {
     m_selectedLanguageType =
@@ -210,6 +359,23 @@ void AppController::setSelectedModel(const QString& model)
 
     m_selectedModel = model;
     emit selectedModelChanged();
+}
+
+void AppController::setOllamaEndpoint(const QString& endpoint)
+{
+    const QString trimmedEndpoint =
+        endpoint.trimmed();
+
+    if (m_ollamaEndpoint == trimmedEndpoint)
+        return;
+
+    m_ollamaEndpoint = trimmedEndpoint;
+
+    QSettings settings("DataBaseSettings", "Proteus");
+    settings.setValue("ai/ollamaEndpoint", trimmedEndpoint);
+
+    emit ollamaEndpointChanged();
+    refreshAiEnvironment();
 }
 
 void AppController::setIsLocalDatabase(bool isLocal)
@@ -266,6 +432,18 @@ void AppController::onGenerateSqlCode()
         emit warningOccurred(
             "Missing path",
             "Please select a class folder first."
+            );
+
+        m_loading = false;
+        emit loadingChanged();
+        return;
+    }
+
+    if (!m_aiEnvironmentReady)
+    {
+        emit warningOccurred(
+            "AI environment",
+            m_aiSetupInstructions
             );
 
         m_loading = false;
@@ -458,6 +636,17 @@ void AppController::onGenerateDalCode(bool secureAccess)
 {
     m_loading = true;
     emit loadingChanged();
+
+    if (!m_aiEnvironmentReady)
+    {
+        m_loading = false;
+        emit loadingChanged();
+        emit dalStatusChanged(
+            m_aiSetupInstructions
+            );
+        return;
+    }
+
     if (!m_dataBaseManager->isConnected())
     {
         m_loading = false;

@@ -49,6 +49,8 @@ qt_add_executable(DataBaseManager
 
     client/ollamaclient.h
     client/ollamaclient.cpp
+    client/ollamaenvironment.h
+    client/ollamaenvironment.cpp
 
     database/databasemanager.h
     database/databasemanager.cpp
@@ -169,6 +171,11 @@ if(BUILD_TESTING)
     )
     target_link_libraries(OllamaClientTest PRIVATE
         Qt6::Network
+    )
+
+    add_proteus_test(OllamaEnvironmentTest
+        tests/ollamaenvironmenttest.cpp
+        client/ollamaenvironment.cpp
     )
 
     add_proteus_test(QmlWorkflowTest

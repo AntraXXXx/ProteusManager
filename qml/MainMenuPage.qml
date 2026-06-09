@@ -85,18 +85,78 @@ Page {
                         Layout.fillHeight: true
                         font.pixelSize: 16
                         Layout.preferredWidth: 300
-                        model: []
-                        Connections {
-                            target: appController
+                        enabled: appController.ollamaRunning && count > 0
+                        model: appController.availableModels
 
-                            function onModelsFetched(models) {
-                                comboBox_AiModell.model = models
+                        onCurrentTextChanged: {
+                            if (currentText.length > 0) {
+                                appController.setSelectedModel(currentText)
+                            }
+                        }
+                    }
+
+                    Label {
+                        text: "Ollama Endpoint:"
+                        font.pixelSize: 18
+                    }
+
+                    RowLayout {
+                        Layout.preferredWidth: 520
+                        spacing: 10
+
+                        TextField {
+                            id: lineEdit_ollamaEndpoint
+                            Layout.preferredWidth: 330
+                            Layout.preferredHeight: 35
+                            font.pixelSize: 16
+                            text: appController.ollamaEndpoint
+                            placeholderText: "http://localhost:11434"
+
+                            onEditingFinished: {
+                                appController.setOllamaEndpoint(text)
                             }
                         }
 
-                        onCurrentTextChanged: {
-                            appController.setSelectedModel(currentText)
+                        Button {
+                            text: "Check"
+                            font.pixelSize: 16
+                            Layout.preferredWidth: 90
+                            Layout.preferredHeight: 38
+
+                            onClicked: {
+                                if (lineEdit_ollamaEndpoint.text !== appController.ollamaEndpoint) {
+                                    appController.setOllamaEndpoint(lineEdit_ollamaEndpoint.text)
+                                } else {
+                                    appController.refreshAiEnvironment()
+                                }
+                            }
                         }
+                    }
+
+                    Label {
+                        text: "AI Status:"
+                        font.pixelSize: 18
+                    }
+
+                    Label {
+                        text: appController.aiConnectionStatus
+                        font.pixelSize: 16
+                        color: appController.aiEnvironmentReady ? "#15803d" : "#b45309"
+                        wrapMode: Text.WordWrap
+                        Layout.preferredWidth: 520
+                    }
+
+                    Label {
+                        text: "Setup:"
+                        font.pixelSize: 18
+                    }
+
+                    Label {
+                        text: appController.aiSetupInstructions
+                        font.pixelSize: 15
+                        color: "#475467"
+                        wrapMode: Text.WordWrap
+                        Layout.preferredWidth: 520
                     }
 
                     Label {
@@ -250,19 +310,12 @@ Page {
                     color: databaseConnected ? "#22c55e" : pushButton_ConnectDB.connectionState === "failed" ? "#ef4444" : "#e5e7eb"
                     border.color: "#d0d5dd"
                 }
-                Connections {
-                        target: appController
-
-                        function onDatabaseConnectedChanged(connected) {
-                            pushButton_SqlGenerator.enabled = connected
-                        }
-                    }
             }
 
             Button {
                 id: pushButton_SqlGenerator
                 text: "SQL Generator"
-                enabled: databaseConnected
+                enabled: databaseConnected && appController.aiEnvironmentReady
                 font.pixelSize: 16
                 Layout.preferredWidth: 165
                 Layout.preferredHeight: 48
@@ -279,7 +332,7 @@ Page {
                     id: pushButton_CodeGenerator
 
                     text: "Code Generator"
-                    enabled: databaseConnected
+                    enabled: databaseConnected && appController.aiEnvironmentReady
 
                     font.pixelSize: 16
                     Layout.preferredWidth: 175

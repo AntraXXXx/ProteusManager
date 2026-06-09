@@ -204,7 +204,7 @@ Page {
             Button {
                 id: pushButton_generate
                 text: "Generate SQL"
-                enabled: !appController.loading
+                enabled: !appController.loading && appController.aiEnvironmentReady
                 font.pixelSize: 16
                 Layout.preferredHeight: 48
                 onClicked: {
