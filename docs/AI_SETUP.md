@@ -45,7 +45,6 @@ Other useful options:
 ```powershell
 ollama pull qwen2.5-coder:7b
 ollama pull codellama
-ollama pull qwen2.5-coder
 ```
 
 Installed models are loaded automatically in the AI model list.
