@@ -37,12 +37,13 @@ agent workflows.
 Install at least one model before using SQL or DAL generation:
 
 ```powershell
-ollama pull llama3.2
+ollama pull qwen3:8b
 ```
 
 Other useful options:
 
 ```powershell
+ollama pull qwen2.5-coder:7b
 ollama pull codellama
 ollama pull qwen2.5-coder
 ```
