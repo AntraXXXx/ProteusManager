@@ -117,6 +117,8 @@ void OllamaClient::generate(const QString& model,
         response.remove("```sql");
         response.remove("```SQL");
         response.remove("```");
+        response.remove("<think>");
+        response.remove("</think>");
         response = response.trimmed();
 
         m_lastResponse = "AI Response:\n" + response;
@@ -127,7 +129,6 @@ void OllamaClient::generate(const QString& model,
         }
         else if (type == GenerateType::Dal)
         {
-
             response = response.trimmed();
 
             emit dalReceived(response);

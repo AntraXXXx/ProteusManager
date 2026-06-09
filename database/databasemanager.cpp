@@ -6,20 +6,41 @@
 
 #include <QDebug>
 
-bool DatabaseManager::openDatabase(QString& connectionName,
-                                   QString& databasePath)
+namespace
 {
+QString quoteSqliteIdentifier(const QString& identifier)
+{
+    QString quoted = identifier;
+    quoted.replace("\"", "\"\"");
+    return "\"" + quoted + "\"";
+}
+}
+
+bool DatabaseManager::openDatabase(const QString& connectionName,
+                                   const QString& databasePath)
+{
+    if (connectionName.isEmpty() || databasePath.isEmpty())
+    {
+        setConnection(false);
+        return false;
+    }
+
     QSqlDatabase db =
-        QSqlDatabase::addDatabase(
-            "QSQLITE",
-            connectionName
-            );
+        QSqlDatabase::contains(connectionName)
+            ? QSqlDatabase::database(connectionName)
+            : QSqlDatabase::addDatabase(
+                  "QSQLITE",
+                  connectionName
+                  );
 
     m_dataBaseConnectionName = connectionName;
 
+    if (db.isOpen())
+        db.close();
+
     db.setDatabaseName(databasePath);
 
-    if (!db.open() || connectionName.isEmpty() || databasePath.isEmpty())
+    if (!db.open())
     {
         qDebug() << "Database Error:"
                  << db.lastError().text();
@@ -66,12 +87,13 @@ bool DatabaseManager::executeQuery(const QString& executeSqlCommand)
         {
             qDebug() << "SQL Error:" << query.lastError().text();
             qDebug() << "Failed Query:" << queryString;
+            m_isValidSql = false;
             return false;
         }
 
         qDebug() << "Executed:" << queryString;
     }
-
+    m_isValidSql = true;
     return true;
 }
 
@@ -114,10 +136,9 @@ bool DatabaseManager::tableExists(const QString& tableName)
     {
         qDebug() << "Table check error:"
                  << query.lastError().text();
-
+        m_isValidSql = false;
         return false;
     }
-
     return query.next();
 }
 
@@ -145,7 +166,7 @@ QString DatabaseManager::buildSchemaDescription()
         result += "Table: " + table + "\n";
 
         QSqlQuery query(
-            QString("PRAGMA table_info(%1)").arg(table),
+            QString("PRAGMA table_info(%1)").arg(quoteSqliteIdentifier(table)),
             QSqlDatabase::database(m_dataBaseConnectionName)
             );
 
@@ -183,7 +204,7 @@ bool DatabaseManager::columnExists(
 
     QSqlQuery query(
         QString("PRAGMA table_info(%1)")
-            .arg(tableName),
+            .arg(quoteSqliteIdentifier(tableName)),
         db);
 
     while (query.next())
@@ -214,7 +235,7 @@ bool DatabaseManager::hasRows(
     query.exec(
         QString(
             "SELECT COUNT(*) FROM %1")
-            .arg(tableName));
+            .arg(quoteSqliteIdentifier(tableName)));
 
     if (query.next())
     {
@@ -238,7 +259,7 @@ QStringList DatabaseManager::getColumnNames(
 
     QSqlQuery query(
         QString("PRAGMA table_info(%1)")
-            .arg(tableName),
+            .arg(quoteSqliteIdentifier(tableName)),
         db);
 
     while (query.next())
