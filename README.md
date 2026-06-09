@@ -55,6 +55,17 @@ The goal of the project is to reduce manual effort during database development a
 
 ---
 
+# Local AI Setup
+
+ProteusManager requires a reachable Ollama endpoint and at least one installed
+AI model before SQL or DAL generation can run.
+
+Setup instructions are available in:
+
+- [docs/AI_SETUP.md](docs/AI_SETUP.md)
+
+---
+
 # System Requirements
 
 - Windows 10 or higher

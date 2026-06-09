@@ -30,6 +30,8 @@ there. A `run_tests` build target is also available.
   to a per-model `.sql` file.
 - `OllamaClientTest` verifies model fetching, generated-response cleanup, and
   connection-error handling against a deterministic fake Ollama server.
+- `OllamaEnvironmentTest` verifies endpoint validation, Ollama installation
+  detection helpers, and setup guidance messages.
 - `QmlWorkflowTest` verifies that the main QML pages load and react to
   generated SQL/DAL signals.
 
