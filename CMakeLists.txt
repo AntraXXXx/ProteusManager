@@ -31,6 +31,10 @@ qt_add_executable(DataBaseManager
 
     utils/textfilemanager.cpp
     utils/textfilemanager.h
+    utils/dalfileexporter.cpp
+    utils/dalfileexporter.h
+    utils/sqloutputrecorder.cpp
+    utils/sqloutputrecorder.h
 
     utils/classscanner.h
     utils/classscanner.cpp

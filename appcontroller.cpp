@@ -1,9 +1,5 @@
 #include "appcontroller.h"
 
-#include <QDir>
-#include <QFile>
-#include <QTextStream>
-
 AppController::AppController(QObject *parent)
     : QObject(parent)
     , m_ollamaClient(new OllamaClient(this))
@@ -26,6 +22,18 @@ AppController::AppController(QObject *parent)
         [this](const QString& sql)
         {
             emit sqlOutputChanged(sql);
+
+            const SqlOutputRecord record =
+                SqlOutputRecorder::recordGeneratedSql(
+                    m_selectedModel,
+                    sql);
+
+            if (record.saved)
+            {
+                m_lastSqlOutputPath = record.filePath;
+                emit lastSqlOutputPathChanged();
+                emit sqlOutputSaved(record.filePath);
+            }
 
             QSettings settings("DataBaseSettings", "Proteus");
             m_classFolderPath = settings.value("classes/scripts").toString();
@@ -105,6 +113,11 @@ QString AppController::dalOutputPath() const
 QString AppController::classesFolderPath() const
 {
     return m_classFolderPath;
+}
+
+QString AppController::lastSqlOutputPath() const
+{
+    return m_lastSqlOutputPath;
 }
 
 bool AppController::isLocalDatabase() const
@@ -524,96 +537,17 @@ void AppController::onExportDalCode(const QString& response, const QString& outp
 {
     m_loading = true;
     emit loadingChanged();
-    if (response.isEmpty())
-    {
-        emit dalExportFinished(
-            "No DAL code available."
-            );
-        m_loading = false;
-        emit loadingChanged();
-        return;
-    }
 
-    if (outputPath.isEmpty())
-    {
-        emit dalExportFinished(
-            "No output path selected."
-            );
-        m_loading = false;
-        emit loadingChanged();
-        return;
-    }
-
-    QDir outputDir(outputPath);
-    if (!outputDir.exists())
-    {
-        emit dalExportFinished(
-            "Selected output path does not exist."
-            );
-        m_loading = false;
-        emit loadingChanged();
-        return;
-    }
-
-    QStringList sections =
-        response.split(
-            "FILE:",
-            Qt::SkipEmptyParts
-            );
-
-    int filesSaved = 0;
-
-    for (const QString& section : sections)
-    {
-        QString trimmed =
-            section.trimmed();
-
-        int lineEnd =
-            trimmed.indexOf('\n');
-
-        if (lineEnd == -1)
-            continue;
-
-        QString rawFileName =
-            trimmed.left(lineEnd).trimmed();
-
-        if (rawFileName.isEmpty()
-            || rawFileName.contains('/')
-            || rawFileName.contains('\\')
-            || rawFileName.contains(':'))
-        {
-            continue;
-        }
-
-        QString fileContent =
-            trimmed.mid(lineEnd + 1);
-
-        QFile file(outputDir.filePath(rawFileName));
-
-        if (file.open(
-                QIODevice::WriteOnly |
-                QIODevice::Text))
-        {
-            QTextStream out(&file);
-            out << fileContent;
-            file.close();
-            ++filesSaved;
-        }
-    }
+    const DalExportResult result =
+        DalFileExporter::exportFiles(
+            response,
+            outputPath);
 
     m_loading = false;
     emit loadingChanged();
 
-    if (filesSaved == 0)
-    {
-        emit dalExportFinished(
-            "No valid DAL files were found in the AI response."
-            );
-        return;
-    }
-
     emit dalExportFinished(
-        QString("DAL files saved: %1").arg(filesSaved)
+        result.message
         );
 }
 
