@@ -2,13 +2,21 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QRegularExpression>
 
 OllamaClient::OllamaClient(QObject *parent)
+    : OllamaClient(QUrl("http://localhost:11434"), parent)
+{
+}
+
+OllamaClient::OllamaClient(const QUrl& baseUrl, QObject *parent)
     : QObject(parent),
-    m_networkManager(new QNetworkAccessManager(this))
+    m_networkManager(new QNetworkAccessManager(this)),
+    m_baseUrl(baseUrl)
 {
 }
 
@@ -17,9 +25,42 @@ QString OllamaClient::getLastResponse() const
     return m_lastResponse;
 }
 
+void OllamaClient::setBaseUrl(const QUrl& baseUrl)
+{
+    m_baseUrl = baseUrl;
+}
+
+QUrl OllamaClient::baseUrl() const
+{
+    return m_baseUrl;
+}
+
+QUrl OllamaClient::endpointUrl(const QString& path) const
+{
+    QUrl url = m_baseUrl;
+    url.setPath(path);
+    return url;
+}
+
+QString OllamaClient::cleanResponseText(QString response)
+{
+    response.remove(
+        QRegularExpression(
+            "<think>[\\s\\S]*?</think>",
+            QRegularExpression::CaseInsensitiveOption));
+
+    response.remove(
+        QRegularExpression(
+            "```[A-Za-z0-9_+#-]*\\s*"));
+
+    response.remove("```");
+
+    return response.trimmed();
+}
+
 void OllamaClient::checkConnection()
 {
-    QNetworkRequest request(QUrl("http://localhost:11434/api/tags"));
+    QNetworkRequest request(endpointUrl("/api/tags"));
     QNetworkReply *reply = m_networkManager->get(request);
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -45,7 +86,7 @@ void OllamaClient::checkConnection()
 
 void OllamaClient::fetchModels()
 {
-    QNetworkRequest request(QUrl("http://localhost:11434/api/tags"));
+    QNetworkRequest request(endpointUrl("/api/tags"));
     QNetworkReply *reply = m_networkManager->get(request);
 
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -75,7 +116,7 @@ void OllamaClient::generate(const QString& model,
                             const QString& prompt,
                             GenerateType type)
 {
-    QNetworkRequest request(QUrl("http://localhost:11434/api/generate"));
+    QNetworkRequest request(endpointUrl("/api/generate"));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
 
     QJsonObject body;
@@ -114,12 +155,7 @@ void OllamaClient::generate(const QString& model,
         qDebug() << "AI Response:";
         qDebug() << response;
 
-        response.remove("```sql");
-        response.remove("```SQL");
-        response.remove("```");
-        response.remove("<think>");
-        response.remove("</think>");
-        response = response.trimmed();
+        response = cleanResponseText(response);
 
         m_lastResponse = "AI Response:\n" + response;
 

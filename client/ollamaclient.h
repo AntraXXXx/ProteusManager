@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -14,6 +15,7 @@ class OllamaClient : public QObject
 
 public:
     explicit OllamaClient(QObject * parent = nullptr);
+    explicit OllamaClient(const QUrl& baseUrl, QObject *parent = nullptr);
     enum class GenerateType
     {
         Sql,
@@ -22,6 +24,9 @@ public:
     void generate(const QString& model, const QString& prompt, GenerateType type);
     void checkConnection();
     void fetchModels();
+    void setBaseUrl(const QUrl& baseUrl);
+    QUrl baseUrl() const;
+    static QString cleanResponseText(QString response);
     bool isValidSqlCode();
 signals:
     void connectionChecked(bool isRunning);
@@ -35,7 +40,10 @@ public:
     GenerateType generateType = GenerateType::Sql;
     bool isValidSql;
 private:
+    QUrl endpointUrl(const QString& path) const;
+
     QNetworkAccessManager *m_networkManager;
+    QUrl m_baseUrl;
     QString m_lastResponse;
 };
 
