@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 
 Page {
     property StackView appStack
-    title: "Programming Code Generator"
+    title: appController.selectedLanguageName + " Code Generator"
 
     background: Rectangle {
         color: "#eef2f7"
@@ -17,7 +17,7 @@ Page {
         spacing: 22
 
         Label {
-            text: "Programming Code Generator"
+            text: appController.selectedLanguageName + " Code Generator"
             font.pixelSize: 36
             font.bold: true
             color: "#101828"

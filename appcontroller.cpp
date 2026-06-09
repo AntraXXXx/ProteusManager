@@ -166,6 +166,17 @@ QStringList AppController::codeLanguages() const
     };
 }
 
+QString AppController::selectedLanguageName() const
+{
+    QStringList languages = codeLanguages();
+    int index = static_cast<int>(m_selectedLanguageType);
+
+    if (index < 0 || index >= languages.size())
+        return "Code";
+
+    return languages.at(index);
+}
+
 bool AppController::executable() const
 {
     return m_isExecutable;

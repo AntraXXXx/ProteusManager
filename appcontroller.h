@@ -17,6 +17,7 @@
 class AppController : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(QString selectedLanguageName READ selectedLanguageName NOTIFY languageChanged)
     Q_PROPERTY(bool executable READ executable NOTIFY executableChanged)
     Q_PROPERTY(bool databaseConnected READ databaseConnected NOTIFY databaseConnectedChanged)
     Q_PROPERTY(QString selectedModel READ selectedModel WRITE setSelectedModel NOTIFY selectedModelChanged)
@@ -28,6 +29,7 @@ class AppController : public QObject
 public:
     explicit AppController(QObject *parent = nullptr);
     QString selectedModel() const;
+    QString selectedLanguageName() const;
     QString dalOutputPath() const;
     QString classesFolderPath() const;
     bool databaseConnected() const;
