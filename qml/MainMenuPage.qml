@@ -251,28 +251,82 @@ Page {
                         }
                     }
 
-                ColumnLayout {
+                GridLayout {
                     visible: !isLocalDatabase
                     Layout.fillWidth: true
-                    spacing: 12
+                    columns: 2
+                    columnSpacing: 20
+                    rowSpacing: 12
+
+                    Label {
+                        text: "Database Type:"
+                        font.pixelSize: 18
+                    }
+
+                    ComboBox {
+                        id: comboBox_DatabaseDriver
+                        Layout.preferredWidth: 520
+                        font.pixelSize: 16
+                        model: appController.databaseDriverNames()
+                    }
+
+                    Label {
+                        text: "Database Address:"
+                        font.pixelSize: 18
+                    }
 
                     TextField {
                         id: lineEdit_DataBaseAddress
-                        Layout.fillWidth: true
+                        Layout.preferredWidth: 520
                         font.pixelSize: 16
-                        placeholderText: "Database address"
+                        placeholderText: "Database name"
+                    }
+
+                    Label {
+                        text: "Host Name:"
+                        font.pixelSize: 18
                     }
 
                     TextField {
                         id: lineEdit_HostName
-                        Layout.fillWidth: true
+                        Layout.preferredWidth: 520
                         font.pixelSize: 16
                         placeholderText: "Host name"
                     }
 
+                    Label {
+                        text: "Port:"
+                        font.pixelSize: 18
+                    }
+
+                    TextField {
+                        id: lineEdit_Port
+                        Layout.preferredWidth: 520
+                        font.pixelSize: 16
+                        placeholderText: "Optional, for example 3306 or 5432"
+                        inputMethodHints: Qt.ImhDigitsOnly
+                    }
+
+                    Label {
+                        text: "User Name:"
+                        font.pixelSize: 18
+                    }
+
+                    TextField {
+                        id: lineEdit_UserName
+                        Layout.preferredWidth: 520
+                        font.pixelSize: 16
+                        placeholderText: "User name"
+                    }
+
+                    Label {
+                        text: "Password:"
+                        font.pixelSize: 18
+                    }
+
                     TextField {
                         id: lineEdit_Password
-                        Layout.fillWidth: true
+                        Layout.preferredWidth: 520
                         font.pixelSize: 16
                         placeholderText: "Password"
                         echoMode: TextInput.Password
@@ -294,15 +348,31 @@ Page {
                 property string connectionState: "neutral"
                 text: databaseConnected ? "Connected" : "Connect DB"
 
-                enabled: isLocalDatabase ? lineEdit_localdatabasepath.text.length > 0 && !databaseConnected : true
+                enabled: !databaseConnected
+                         && (isLocalDatabase
+                             ? lineEdit_localdatabasepath.text.length > 0
+                             : lineEdit_DataBaseAddress.text.length > 0
+                               && lineEdit_HostName.text.length > 0
+                               && comboBox_DatabaseDriver.currentText.length > 0)
                 font.pixelSize: 16
                 Layout.preferredWidth: 145
                 Layout.preferredHeight: 48
 
                 onClicked: {
-                    appController.connectDatabase(
-                    lineEdit_localdatabasepath.text
-                    )
+                    if (isLocalDatabase) {
+                        appController.connectDatabase(
+                            lineEdit_localdatabasepath.text
+                        )
+                    } else {
+                        appController.connectOnlineDatabase(
+                            comboBox_DatabaseDriver.currentText,
+                            lineEdit_DataBaseAddress.text,
+                            lineEdit_HostName.text,
+                            lineEdit_Port.text,
+                            lineEdit_UserName.text,
+                            lineEdit_Password.text
+                        )
+                    }
                 }
 
                 background: Rectangle {
