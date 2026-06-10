@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 
 Page {
+    id: sqlGeneratorPage
     property StackView appStack
     title: "SQL Generator"
 
@@ -13,8 +14,8 @@ Page {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 34
-        spacing: 22
+        anchors.margins: 24
+        spacing: 16
 
         Label {
             text: "SQL Generator"
@@ -24,7 +25,18 @@ Page {
             Layout.alignment: Qt.AlignHCenter
         }
 
-        Frame {
+        ScrollView {
+            id: sqlContentScroll
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: availableWidth
+            clip: true
+
+            ColumnLayout {
+                width: sqlContentScroll.availableWidth
+                spacing: 16
+
+                Frame {
             Layout.fillWidth: true
             padding: 24
 
@@ -75,7 +87,7 @@ Page {
 
                     TextField {
                         id: lineEdit_scriptclassespath
-                        Layout.preferredWidth: 750
+                        Layout.fillWidth: true
                         Layout.preferredHeight: 35
                         Layout.alignment: Qt.AlignHCenter
                         text: appController.classesFolderPath
@@ -103,7 +115,7 @@ Page {
             }
         }
 
-        Frame {
+                Frame {
             Layout.fillWidth: true
             padding: 20
 
@@ -132,9 +144,9 @@ Page {
             }
         }
 
-        Frame {
+                Frame {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+                    Layout.preferredHeight: 340
             padding: 24
 
             background: Rectangle {
@@ -167,15 +179,21 @@ Page {
                             height: parent.height
                         }
                     }
-                }
             }
+        }
+            }
+        }
+
         ProgressBar {
             Layout.fillWidth: true
             visible: false
         }
-        RowLayout {
+
+        GridLayout {
             Layout.fillWidth: true
-            spacing: 14
+            columns: sqlGeneratorPage.width < 560 ? 1 : sqlGeneratorPage.width < 860 ? 2 : 4
+            columnSpacing: 14
+            rowSpacing: 10
 
             Connections {
                  target: appController
@@ -206,6 +224,8 @@ Page {
                 text: "Generate SQL"
                 enabled: !appController.loading && appController.aiEnvironmentReady
                 font.pixelSize: 16
+                Layout.fillWidth: true
+                Layout.minimumWidth: 140
                 Layout.preferredHeight: 48
                 onClicked: {
                     appController.setClassesFolderPath(lineEdit_scriptclassespath.text)
@@ -228,6 +248,8 @@ Page {
                 text: "Execute SQL"
                 enabled: appController.executable && !appController.loading && lineEdit_generatedsqlcodeoutput.text.length !== 0
                 font.pixelSize: 16
+                Layout.fillWidth: true
+                Layout.minimumWidth: 140
                 Layout.preferredHeight: 48
                 onClicked: {
                     lineEdit_generatedsqlcodeoutput.text = appController.onExecuteSqlCode(
@@ -240,18 +262,16 @@ Page {
                 id: progressBar_loading
                 visible: appController.loading
                 indeterminate: true
-                Layout.preferredWidth: 600
-            }
-
-            Item {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 140
             }
 
             Button {
                 id: button_SqlBack
                 text: "Back"
                 font.pixelSize: 16
-                Layout.preferredWidth: 120
+                Layout.fillWidth: true
+                Layout.minimumWidth: 110
                 Layout.preferredHeight: 48
                 enabled: !appController.loading
                 onClicked: {
