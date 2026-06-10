@@ -1,5 +1,39 @@
 #include "appcontroller.h"
 
+namespace
+{
+QString driverKeyFromDisplayName(const QString& driverName)
+{
+    if (driverName.contains("PostgreSQL", Qt::CaseInsensitive))
+        return "QPSQL";
+
+    if (driverName.contains("SQL Server", Qt::CaseInsensitive)
+        || driverName.contains("ODBC", Qt::CaseInsensitive))
+    {
+        return "QODBC";
+    }
+
+    return "QMYSQL";
+}
+
+QString databaseDialectName(const QString& driverName)
+{
+    if (driverName == "QSQLITE")
+        return "SQLite 3";
+
+    if (driverName == "QMYSQL")
+        return "MySQL or MariaDB";
+
+    if (driverName == "QPSQL")
+        return "PostgreSQL";
+
+    if (driverName == "QODBC")
+        return "Microsoft SQL Server or ODBC";
+
+    return "the connected database";
+}
+}
+
 AppController::AppController(QObject *parent)
     : QObject(parent)
     , m_ollamaClient(new OllamaClient(this))
@@ -298,6 +332,64 @@ void AppController::connectDatabase(const QString& databasePath)
     emit databaseConnectedChanged(m_databaseConnected);
 }
 
+void AppController::connectOnlineDatabase(
+    const QString& driverName,
+    const QString& databaseName,
+    const QString& hostName,
+    const QString& port,
+    const QString& userName,
+    const QString& password)
+{
+    const QString driver =
+        driverKeyFromDisplayName(driverName);
+
+    bool portIsNumber = false;
+    const int portNumber =
+        port.trimmed().toInt(&portIsNumber);
+
+    if (!port.trimmed().isEmpty() && !portIsNumber)
+    {
+        m_databaseConnected = false;
+        emit databaseStatusChanged("Port must be a number.");
+        emit databaseConnectedChanged(false);
+        return;
+    }
+
+    const bool connected =
+        m_dataBaseManager->openRemoteDatabase(
+            "proteus_online_database",
+            driver,
+            hostName.trimmed(),
+            portIsNumber ? portNumber : 0,
+            databaseName.trimmed(),
+            userName.trimmed(),
+            password);
+
+    m_databaseConnected = connected;
+
+    if (m_databaseConnected)
+    {
+        QSettings settings("DataBaseSettings", "Proteus");
+        settings.setValue("database/isLocalConnection", false);
+        settings.setValue("database/onlineDriver", driverName);
+        settings.setValue("database/onlineDatabaseName", databaseName.trimmed());
+        settings.setValue("database/onlineHostName", hostName.trimmed());
+        settings.setValue("database/onlinePort", port.trimmed());
+        settings.setValue("database/onlineUserName", userName.trimmed());
+
+        emit databaseStatusChanged("Connected");
+    }
+    else
+    {
+        emit databaseStatusChanged(
+            m_dataBaseManager->lastError().isEmpty()
+                ? "Connection failed"
+                : m_dataBaseManager->lastError());
+    }
+
+    emit databaseConnectedChanged(m_databaseConnected);
+}
+
 QStringList AppController::codeLanguages() const
 {
     return {
@@ -310,6 +402,15 @@ QStringList AppController::codeLanguages() const
         "F#",
         "PowerShell",
         "Java"
+    };
+}
+
+QStringList AppController::databaseDriverNames() const
+{
+    return {
+        "MySQL / MariaDB",
+        "PostgreSQL",
+        "SQL Server / ODBC"
     };
 }
 
@@ -498,11 +599,18 @@ void AppController::onGenerateSqlCode()
         return;
     }
 
+    const QString databaseDialect =
+        databaseDialectName(
+            m_dataBaseManager->databaseDriver());
+
     m_prompt =
-        "You are a professional SQLite database architect. "
-        "Generate SQL that is fully compatible with SQLite 3. "
+        "You are a professional "
+        + databaseDialect
+        + " database architect. "
+        "Generate SQL that is fully compatible with "
+        + databaseDialect
+        + ". "
         "Analyze all provided classes, attributes and database metadata. "
-        "Never generate MySQL, PostgreSQL, SQL Server or Oracle syntax. "
 
         "Use only the provided class names, attribute names and database information. "
         "Never rename classes. "
@@ -525,9 +633,9 @@ void AppController::onGenerateSqlCode()
         "No Duplicate Columns: Never generate ALTER TABLE to add a new column if a field with the same logical purpose already exists. "
         "Semantic Mapping: Map fields by their meaning, not just exact names. If a matching concept exists under a slightly different name, reuse it instead of creating a new column. "
         "Every detected class and attribute must be considered exactly as provided. "
-        "Use appropriate SQLite datatypes. "
+        "Use datatypes that are appropriate for the connected database. "
         "Create primary keys and foreign keys where appropriate. "
-        "Use AUTOINCREMENT only when automatic identifier generation is logically required. ";
+        "Use automatic identifier generation syntax only when it is supported by the connected database and logically required. ";
 
     if (m_addAuditFields)
     {
@@ -541,7 +649,9 @@ void AppController::onGenerateSqlCode()
     }
 
     m_prompt +=
-        "Return only executable SQLite SQL statements. "
+        "Return only executable SQL statements for "
+        + databaseDialect
+        + ". "
         "No markdown. "
         "No code fences. "
         "Do not wrap SQL in ```sql blocks. "
@@ -657,13 +767,19 @@ void AppController::onGenerateDalCode(bool secureAccess)
         return;
     }
 
+    const QString databaseDialect =
+        databaseDialectName(
+            m_dataBaseManager->databaseDriver());
+
     QString dalPrompt =
         "You are a professional database access layer generator. ";
 
     if (secureAccess)
     {
         dalPrompt +=
-            "Generate secure database access classes for the following SQLite schema. ";
+            "Generate secure database access classes for the following "
+            + databaseDialect
+            + " schema. ";
         emit dalStatusChanged(
             "Generating secure database access layer..."
             );
@@ -671,7 +787,9 @@ void AppController::onGenerateDalCode(bool secureAccess)
     else
     {
         dalPrompt +=
-            "Generate database access classes for the following SQLite schema. ";
+            "Generate database access classes for the following "
+            + databaseDialect
+            + " schema. ";
         emit dalStatusChanged(
             "Generating database access layer..."
             );
@@ -701,7 +819,9 @@ void AppController::onGenerateDalCode(bool secureAccess)
         emit dalStatusChanged("Generating .cs files...");
 
         dalPrompt +=
-            "Target language: C# with SQLite. "
+            "Target language: C# with "
+            + databaseDialect
+            + ". "
             "Generate one .cs file per database table. "
             "Use parameterized queries. ";
     }

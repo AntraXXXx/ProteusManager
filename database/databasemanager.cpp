@@ -1,8 +1,11 @@
 #include "databasemanager.h"
 
 #include <QSqlDatabase>
+#include <QSqlDriver>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QSqlField>
+#include <QSqlRecord>
 
 #include <QDebug>
 #include <QRegularExpression>
@@ -15,6 +18,19 @@ QString quoteSqliteIdentifier(const QString& identifier)
     quoted.replace("\"", "\"\"");
     return "\"" + quoted + "\"";
 }
+
+QString escapeTableIdentifier(const QSqlDatabase& db, const QString& tableName)
+{
+    const QString escaped =
+        db.driver()
+            ? db.driver()->escapeIdentifier(tableName, QSqlDriver::TableName)
+            : QString();
+
+    if (!escaped.isEmpty())
+        return escaped;
+
+    return quoteSqliteIdentifier(tableName);
+}
 }
 
 bool DatabaseManager::openDatabase(const QString& connectionName,
@@ -22,6 +38,7 @@ bool DatabaseManager::openDatabase(const QString& connectionName,
 {
     if (connectionName.isEmpty() || databasePath.isEmpty())
     {
+        m_lastError = "No local database path selected.";
         setConnection(false);
         return false;
     }
@@ -43,13 +60,85 @@ bool DatabaseManager::openDatabase(const QString& connectionName,
 
     if (!db.open())
     {
+        m_lastError = db.lastError().text();
         qDebug() << "Database Error:"
-                 << db.lastError().text();
+                 << m_lastError;
 
         setConnection(false);
         return false;
     }
+
+    m_databasePath = databasePath;
+    m_lastError.clear();
     qDebug() << "Database connected";
+
+    setConnection(true);
+    return true;
+}
+
+bool DatabaseManager::openRemoteDatabase(
+    const QString& connectionName,
+    const QString& driver,
+    const QString& hostName,
+    int port,
+    const QString& databaseName,
+    const QString& userName,
+    const QString& password)
+{
+    if (connectionName.isEmpty()
+        || driver.isEmpty()
+        || hostName.isEmpty()
+        || databaseName.isEmpty())
+    {
+        m_lastError =
+            "Database type, database name and host name are required.";
+        setConnection(false);
+        return false;
+    }
+
+    if (!QSqlDatabase::drivers().contains(driver))
+    {
+        m_lastError =
+            "Qt SQL driver is not installed: " + driver;
+        qDebug() << m_lastError;
+        setConnection(false);
+        return false;
+    }
+
+    QSqlDatabase db =
+        QSqlDatabase::contains(connectionName)
+            ? QSqlDatabase::database(connectionName)
+            : QSqlDatabase::addDatabase(
+                  driver,
+                  connectionName
+                  );
+
+    m_dataBaseConnectionName = connectionName;
+
+    if (db.isOpen())
+        db.close();
+
+    db.setHostName(hostName);
+    db.setDatabaseName(databaseName);
+    db.setUserName(userName);
+    db.setPassword(password);
+
+    if (port > 0)
+        db.setPort(port);
+
+    if (!db.open())
+    {
+        m_lastError = db.lastError().text();
+        qDebug() << "Remote database error:"
+                 << m_lastError;
+
+        setConnection(false);
+        return false;
+    }
+
+    m_databasePath = databaseName;
+    m_lastError.clear();
+    qDebug() << "Remote database connected";
 
     setConnection(true);
     return true;
@@ -67,6 +156,7 @@ bool DatabaseManager::executeQuery(const QString& executeSqlCommand)
 
     if (!db.isOpen())
     {
+        m_lastError = "Database is not open.";
         qDebug() << "Database is not open";
         qDebug() << "Connection name:" << m_dataBaseConnectionName;
         return false;
@@ -86,6 +176,7 @@ bool DatabaseManager::executeQuery(const QString& executeSqlCommand)
 
         if (!query.exec(queryString))
         {
+            m_lastError = query.lastError().text();
             qDebug() << "SQL Error:" << query.lastError().text();
             qDebug() << "Failed Query:" << queryString;
             m_isValidSql = false;
@@ -113,6 +204,11 @@ bool DatabaseManager::isConnected() const
     return m_isConnected;
 }
 
+bool DatabaseManager::isLocalDatabase(bool isLocal)
+{
+    return isLocal;
+}
+
 bool DatabaseManager::tableExists(const QString& tableName)
 {
     QSqlDatabase db =
@@ -120,64 +216,84 @@ bool DatabaseManager::tableExists(const QString& tableName)
 
     if (!db.isOpen())
     {
+        m_lastError = "Database is not open.";
         qDebug() << "Database is not open";
         return false;
     }
 
-    QSqlQuery query(db);
+    const QStringList tables =
+        db.tables(QSql::Tables);
 
-    query.prepare(
-        "SELECT name FROM sqlite_master "
-        "WHERE type='table' AND name=:tableName"
-        );
-
-    query.bindValue(":tableName", tableName);
-
-    if (!query.exec())
+    for (const QString& table : tables)
     {
-        qDebug() << "Table check error:"
-                 << query.lastError().text();
-        m_isValidSql = false;
-        return false;
+        if (table.compare(tableName, Qt::CaseInsensitive) == 0)
+            return true;
     }
-    return query.next();
+
+    return false;
 }
 
 QStringList DatabaseManager::getTableNames()
 {
-    QStringList tables;
-
     QSqlDatabase db = QSqlDatabase::database(m_dataBaseConnectionName);
-    QSqlQuery query(db);
 
-    query.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+    if (!db.isOpen())
+        return {};
 
-    while (query.next())
-        tables.append(query.value(0).toString());
+    QStringList tables =
+        db.tables(QSql::Tables);
+
+    tables.removeAll("sqlite_sequence");
 
     return tables;
 }
 
 QString DatabaseManager::buildSchemaDescription()
 {
-    QString result = "Current SQLite database schema:\n\n";
+    QString result =
+        "Current "
+        + databaseDriver()
+        + " database schema:\n\n";
 
     for (const QString& table : getTableNames())
     {
         result += "Table: " + table + "\n";
 
-        QSqlQuery query(
-            QString("PRAGMA table_info(%1)").arg(quoteSqliteIdentifier(table)),
-            QSqlDatabase::database(m_dataBaseConnectionName)
-            );
+        QSqlDatabase db =
+            QSqlDatabase::database(m_dataBaseConnectionName);
 
-        while (query.next())
+        if (db.driverName() == "QSQLITE")
         {
-            result += "- "
-                      + query.value("name").toString()
-                      + " "
-                      + query.value("type").toString()
-                      + "\n";
+            QSqlQuery query(
+                QString("PRAGMA table_info(%1)")
+                    .arg(quoteSqliteIdentifier(table)),
+                db);
+
+            while (query.next())
+            {
+                result += "- "
+                          + query.value("name").toString()
+                          + " "
+                          + query.value("type").toString()
+                          + "\n";
+            }
+        }
+        else
+        {
+            const QSqlRecord record =
+                db.record(table);
+
+            for (int i = 0; i < record.count(); ++i)
+            {
+                const QSqlField field =
+                    record.field(i);
+
+                result += "- "
+                          + field.name()
+                          + " "
+                          + QString::fromUtf8(field.metaType().name())
+                          + "\n";
+            }
         }
 
         result += "\n";
@@ -192,6 +308,9 @@ QString DatabaseManager::databaseDriver() const
         QSqlDatabase::database(
             m_dataBaseConnectionName);
 
+    if (!db.isValid())
+        return "database";
+
     return db.driverName();
 }
 
@@ -203,17 +322,15 @@ bool DatabaseManager::columnExists(
         QSqlDatabase::database(
             m_dataBaseConnectionName);
 
-    QSqlQuery query(
-        QString("PRAGMA table_info(%1)")
-            .arg(quoteSqliteIdentifier(tableName)),
-        db);
+    if (!db.isOpen())
+        return false;
 
-    while (query.next())
+    const QSqlRecord record =
+        db.record(tableName);
+
+    for (int i = 0; i < record.count(); ++i)
     {
-        QString column =
-            query.value("name").toString();
-
-        if (column.compare(
+        if (record.fieldName(i).compare(
                 columnName,
                 Qt::CaseInsensitive) == 0)
         {
@@ -236,7 +353,7 @@ bool DatabaseManager::hasRows(
     query.exec(
         QString(
             "SELECT COUNT(*) FROM %1")
-            .arg(quoteSqliteIdentifier(tableName)));
+            .arg(escapeTableIdentifier(db, tableName)));
 
     if (query.next())
     {
@@ -258,15 +375,13 @@ QStringList DatabaseManager::getColumnNames(
     if (!db.isOpen())
         return columns;
 
-    QSqlQuery query(
-        QString("PRAGMA table_info(%1)")
-            .arg(quoteSqliteIdentifier(tableName)),
-        db);
+    const QSqlRecord record =
+        db.record(tableName);
 
-    while (query.next())
+    for (int i = 0; i < record.count(); ++i)
     {
         columns.append(
-            query.value("name").toString()
+            record.fieldName(i)
             );
     }
 
@@ -328,5 +443,10 @@ bool DatabaseManager::isValidSql(
     }
 
     return hasValidStatement;
+}
+
+QString DatabaseManager::lastError() const
+{
+    return m_lastError;
 }
 

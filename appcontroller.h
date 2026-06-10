@@ -57,6 +57,7 @@ public:
     bool aiEnvironmentReady() const;
 
     Q_INVOKABLE QStringList codeLanguages() const;
+    Q_INVOKABLE QStringList databaseDriverNames() const;
     Q_INVOKABLE void setSelectedLanguage(int index);
     Q_INVOKABLE void setSelectedModel(const QString& model);
     Q_INVOKABLE void setOllamaEndpoint(const QString& endpoint);
@@ -71,6 +72,13 @@ public:
     Q_INVOKABLE void fetchModels();
     Q_INVOKABLE void refreshAiEnvironment();
     Q_INVOKABLE void connectDatabase(const QString& databasePath);
+    Q_INVOKABLE void connectOnlineDatabase(
+        const QString& driverName,
+        const QString& databaseName,
+        const QString& hostName,
+        const QString& port,
+        const QString& userName,
+        const QString& password);
 
 signals:
     void modelsFetched(const QStringList& models);
