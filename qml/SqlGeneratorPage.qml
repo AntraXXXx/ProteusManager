@@ -89,6 +89,7 @@ Page {
                         id: lineEdit_scriptclassespath
                         Layout.fillWidth: true
                         Layout.preferredHeight: 35
+                        Layout.preferredWidth: 700
                         Layout.alignment: Qt.AlignHCenter
                         text: appController.classesFolderPath
                         font.pixelSize: 16

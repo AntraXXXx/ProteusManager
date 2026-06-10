@@ -89,6 +89,7 @@ Page {
                         id: lineEdit_scriptoutputfolder
                         Layout.fillWidth: true
                         Layout.preferredHeight: 35
+                        Layout.preferredWidth: 700
                         Layout.alignment: Qt.AlignHCenter
                         text: appController.dalOutputPath
                         font.pixelSize: 16
