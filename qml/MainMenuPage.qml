@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 
 Page {
+    id: mainMenuPage
     property StackView appStack
     property bool isLocalDatabase: appController.isLocalDatabase
     property bool databaseConnected: appController.databaseConnected
@@ -14,192 +15,213 @@ Page {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 34
-        spacing: 24
+        anchors.margins: 24
+        spacing: 16
 
-        Label {
-            text: "Proteus Manager"
-            font.pixelSize: 40
-            font.bold: true
-            color: "#101828"
-            Layout.alignment: Qt.AlignHCenter
-        }
-
-        Label {
-            text: "AI-assisted database schema and code generation"
-            font.pixelSize: 17
-            color: "#667085"
-            Layout.alignment: Qt.AlignHCenter
-        }
-
-        Frame {
+        ScrollView {
+            id: mainMenuScroll
             Layout.fillWidth: true
-            padding: 26
-
-            background: Rectangle {
-                color: "white"
-                radius: 18
-                border.color: "#d0d5dd"
-            }
+            Layout.fillHeight: true
+            contentWidth: availableWidth
+            clip: true
 
             ColumnLayout {
+                width: mainMenuScroll.availableWidth
                 spacing: 18
 
                 Label {
-                    text: "Project Settings"
-                    font.pixelSize: 24
+                    text: "Proteus Manager"
+                    font.pixelSize: 40
                     font.bold: true
                     color: "#101828"
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
                 }
 
-                GridLayout {
-                    columns: 2
-                    columnSpacing: 26
-                    rowSpacing: 18
+                Label {
+                    text: "AI-assisted database schema and code generation"
+                    font.pixelSize: 17
+                    color: "#667085"
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
                     Layout.fillWidth: true
+                }
 
-                    Label {
-                        text: "Code Language:"
-                        font.pixelSize: 18
+                Frame {
+                    Layout.fillWidth: true
+                    padding: 22
+
+                    background: Rectangle {
+                        color: "white"
+                        radius: 18
+                        border.color: "#d0d5dd"
                     }
 
-                    ComboBox {
-                        id: comboBox_CodeLanguage
-                        Layout.fillHeight: true
-                        font.pixelSize: 16
-                        Layout.preferredWidth: 300
-                        model: appController.codeLanguages()
+                    ColumnLayout {
+                        spacing: 18
+                        anchors.fill: parent
 
-                        onCurrentIndexChanged: {
-                            appController.setSelectedLanguage(currentIndex)
+                        Label {
+                            text: "Project Settings"
+                            font.pixelSize: 24
+                            font.bold: true
+                            color: "#101828"
+                            Layout.fillWidth: true
                         }
-                    }
 
-                    Label {
-                        text: "AI Model:"
-                        font.pixelSize: 18
-                    }
+                        GridLayout {
+                            columns: mainMenuPage.width < 760 ? 1 : 2
+                            columnSpacing: 26
+                            rowSpacing: 18
+                            Layout.fillWidth: true
 
-                    ComboBox {
-                        id: comboBox_AiModell
-                        Layout.fillHeight: true
-                        font.pixelSize: 16
-                        Layout.preferredWidth: 300
-                        enabled: appController.ollamaRunning && count > 0
-                        model: appController.availableModels
-
-                        onCurrentTextChanged: {
-                            if (currentText.length > 0) {
-                                appController.setSelectedModel(currentText)
+                            Label {
+                                text: "Code Language:"
+                                font.pixelSize: 18
                             }
-                        }
-                    }
 
-                    Label {
-                        text: "Ollama Endpoint:"
-                        font.pixelSize: 18
-                    }
+                            ComboBox {
+                                id: comboBox_CodeLanguage
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 300
+                                font.pixelSize: 16
+                                model: appController.codeLanguages()
 
-                    RowLayout {
-                        Layout.preferredWidth: 520
-                        spacing: 10
-
-                        TextField {
-                            id: lineEdit_ollamaEndpoint
-                            Layout.preferredWidth: 330
-                            Layout.preferredHeight: 35
-                            font.pixelSize: 16
-                            text: appController.ollamaEndpoint
-                            placeholderText: "http://localhost:11434"
-
-                            onEditingFinished: {
-                                appController.setOllamaEndpoint(text)
+                                onCurrentIndexChanged: {
+                                    appController.setSelectedLanguage(currentIndex)
+                                }
                             }
-                        }
 
-                        Button {
-                            text: "Check"
-                            font.pixelSize: 16
-                            Layout.preferredWidth: 90
-                            Layout.preferredHeight: 38
+                            Label {
+                                text: "AI Model:"
+                                font.pixelSize: 18
+                            }
 
-                            onClicked: {
-                                if (lineEdit_ollamaEndpoint.text !== appController.ollamaEndpoint) {
-                                    appController.setOllamaEndpoint(lineEdit_ollamaEndpoint.text)
-                                } else {
-                                    appController.refreshAiEnvironment()
+                            ComboBox {
+                                id: comboBox_AiModell
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 300
+                                font.pixelSize: 16
+                                enabled: appController.ollamaRunning && count > 0
+                                model: appController.availableModels
+
+                                onCurrentTextChanged: {
+                                    if (currentText.length > 0) {
+                                        appController.setSelectedModel(currentText)
+                                    }
+                                }
+                            }
+
+                            Label {
+                                text: "Ollama Endpoint:"
+                                font.pixelSize: 18
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+
+                                TextField {
+                                    id: lineEdit_ollamaEndpoint
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 35
+                                    font.pixelSize: 16
+                                    text: appController.ollamaEndpoint
+                                    placeholderText: "http://localhost:11434"
+
+                                    onEditingFinished: {
+                                        appController.setOllamaEndpoint(text)
+                                    }
+                                }
+
+                                Button {
+                                    text: "Check"
+                                    font.pixelSize: 16
+                                    Layout.preferredWidth: 90
+                                    Layout.preferredHeight: 38
+
+                                    onClicked: {
+                                        if (lineEdit_ollamaEndpoint.text !== appController.ollamaEndpoint) {
+                                            appController.setOllamaEndpoint(lineEdit_ollamaEndpoint.text)
+                                        } else {
+                                            appController.refreshAiEnvironment()
+                                        }
+                                    }
+                                }
+                            }
+
+                            Label {
+                                text: "AI Status:"
+                                font.pixelSize: 18
+                            }
+
+                            Label {
+                                text: appController.aiConnectionStatus
+                                font.pixelSize: 16
+                                color: appController.aiEnvironmentReady ? "#15803d" : "#b45309"
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+
+                            Label {
+                                text: "Setup:"
+                                font.pixelSize: 18
+                            }
+
+                            Label {
+                                text: appController.aiSetupInstructions
+                                font.pixelSize: 15
+                                color: "#475467"
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+
+                            Label {
+                                text: "Local Database:"
+                                font.pixelSize: 18
+                            }
+
+                            Switch {
+                                checked: isLocalDatabase
+
+                                onCheckedChanged: {
+                                    isLocalDatabase = checked
+                                    appController.setIsLocalDatabase(checked)
                                 }
                             }
                         }
                     }
+                }
 
-                    Label {
-                        text: "AI Status:"
-                        font.pixelSize: 18
+                Frame {
+                    Layout.fillWidth: true
+                    padding: 22
+
+                    background: Rectangle {
+                        color: "white"
+                        radius: 18
+                        border.color: "#d0d5dd"
                     }
 
-                    Label {
-                        text: appController.aiConnectionStatus
-                        font.pixelSize: 16
-                        color: appController.aiEnvironmentReady ? "#15803d" : "#b45309"
-                        wrapMode: Text.WordWrap
-                        Layout.preferredWidth: 520
-                    }
+                    ColumnLayout {
+                        spacing: 16
+                        anchors.fill: parent
 
-                    Label {
-                        text: "Setup:"
-                        font.pixelSize: 18
-                    }
-
-                    Label {
-                        text: appController.aiSetupInstructions
-                        font.pixelSize: 15
-                        color: "#475467"
-                        wrapMode: Text.WordWrap
-                        Layout.preferredWidth: 520
-                    }
-
-                    Label {
-                        text: "Local Database:"
-                        font.pixelSize: 18
-                    }
-
-                    Switch {
-                        checked: isLocalDatabase
-
-                        onCheckedChanged: {
-                            isLocalDatabase = checked
-                            appController.setIsLocalDatabase(checked)
+                        Label {
+                            text: isLocalDatabase ? "Local Database" : "Online Database"
+                            font.pixelSize: 24
+                            font.bold: true
+                            color: "#101828"
+                            Layout.fillWidth: true
                         }
-                    }
-                }
-            }
-        }
 
-        Frame {
-            Layout.fillWidth: true
-            padding: 26
-
-            background: Rectangle {
-                color: "white"
-                radius: 18
-                border.color: "#d0d5dd"
-            }
-
-            ColumnLayout {
-                spacing: 16
-
-                Label {
-                    text: isLocalDatabase ? "Local Database" : "Online Database"
-                    font.pixelSize: 24
-                    font.bold: true
-                    color: "#101828"
-                }
-
-                RowLayout {
+                        GridLayout {
                         visible: isLocalDatabase
                         Layout.fillWidth: true
-                        spacing: 12
+                            columns: mainMenuPage.width < 680 ? 1 : 2
+                            columnSpacing: 12
+                            rowSpacing: 12
 
                         FileDialog {
                             id: fileDialog
@@ -219,6 +241,7 @@ Page {
                             font.pixelSize: 16
                             Layout.preferredWidth: 90
                             Layout.preferredHeight: 42
+                                Layout.fillWidth: mainMenuPage.width < 680
 
                             onClicked: {
                                 fileDialog.open()
@@ -228,7 +251,7 @@ Page {
                         TextField {
                             id: lineEdit_localdatabasepath
 
-                            Layout.preferredWidth: 750
+                                Layout.fillWidth: true
                             Layout.preferredHeight: 35
                             Layout.alignment: Qt.AlignHCenter
 
@@ -251,97 +274,98 @@ Page {
                         }
                     }
 
-                GridLayout {
-                    visible: !isLocalDatabase
-                    Layout.fillWidth: true
-                    columns: 2
-                    columnSpacing: 20
-                    rowSpacing: 12
+                        GridLayout {
+                            visible: !isLocalDatabase
+                            Layout.fillWidth: true
+                            columns: mainMenuPage.width < 680 ? 1 : 2
+                            columnSpacing: 20
+                            rowSpacing: 12
 
-                    Label {
-                        text: "Database Type:"
-                        font.pixelSize: 18
-                    }
+                            Label {
+                                text: "Database Type:"
+                                font.pixelSize: 18
+                            }
 
-                    ComboBox {
-                        id: comboBox_DatabaseDriver
-                        Layout.preferredWidth: 520
-                        font.pixelSize: 16
-                        model: appController.databaseDriverNames()
-                    }
+                            ComboBox {
+                                id: comboBox_DatabaseDriver
+                                Layout.fillWidth: true
+                                font.pixelSize: 16
+                                model: appController.databaseDriverNames()
+                            }
 
-                    Label {
-                        text: "Database Address:"
-                        font.pixelSize: 18
-                    }
+                            Label {
+                                text: "Database Address:"
+                                font.pixelSize: 18
+                            }
 
-                    TextField {
-                        id: lineEdit_DataBaseAddress
-                        Layout.preferredWidth: 520
-                        font.pixelSize: 16
-                        placeholderText: "Database name"
-                    }
+                            TextField {
+                                id: lineEdit_DataBaseAddress
+                                Layout.fillWidth: true
+                                font.pixelSize: 16
+                                placeholderText: "Database name"
+                            }
 
-                    Label {
-                        text: "Host Name:"
-                        font.pixelSize: 18
-                    }
+                            Label {
+                                text: "Host Name:"
+                                font.pixelSize: 18
+                            }
 
-                    TextField {
-                        id: lineEdit_HostName
-                        Layout.preferredWidth: 520
-                        font.pixelSize: 16
-                        placeholderText: "Host name"
-                    }
+                            TextField {
+                                id: lineEdit_HostName
+                                Layout.fillWidth: true
+                                font.pixelSize: 16
+                                placeholderText: "Host name"
+                            }
 
-                    Label {
-                        text: "Port:"
-                        font.pixelSize: 18
-                    }
+                            Label {
+                                text: "Port:"
+                                font.pixelSize: 18
+                            }
 
-                    TextField {
-                        id: lineEdit_Port
-                        Layout.preferredWidth: 520
-                        font.pixelSize: 16
-                        placeholderText: "Optional, for example 3306 or 5432"
-                        inputMethodHints: Qt.ImhDigitsOnly
-                    }
+                            TextField {
+                                id: lineEdit_Port
+                                Layout.fillWidth: true
+                                font.pixelSize: 16
+                                placeholderText: "Optional, for example 3306 or 5432"
+                                inputMethodHints: Qt.ImhDigitsOnly
+                            }
 
-                    Label {
-                        text: "User Name:"
-                        font.pixelSize: 18
-                    }
+                            Label {
+                                text: "User Name:"
+                                font.pixelSize: 18
+                            }
 
-                    TextField {
-                        id: lineEdit_UserName
-                        Layout.preferredWidth: 520
-                        font.pixelSize: 16
-                        placeholderText: "User name"
-                    }
+                            TextField {
+                                id: lineEdit_UserName
+                                Layout.fillWidth: true
+                                font.pixelSize: 16
+                                placeholderText: "User name"
+                            }
 
-                    Label {
-                        text: "Password:"
-                        font.pixelSize: 18
-                    }
+                            Label {
+                                text: "Password:"
+                                font.pixelSize: 18
+                            }
 
-                    TextField {
-                        id: lineEdit_Password
-                        Layout.preferredWidth: 520
-                        font.pixelSize: 16
-                        placeholderText: "Password"
-                        echoMode: TextInput.Password
-                    }
-                }
+                            TextField {
+                                id: lineEdit_Password
+                                Layout.fillWidth: true
+                                font.pixelSize: 16
+                                placeholderText: "Password"
+                                echoMode: TextInput.Password
+                            }
+                        }
             }
         }
-
-        Item {
-            Layout.fillHeight: true
+        }
         }
 
-        RowLayout {
+        GridLayout {
+            id: mainActionBar
             Layout.fillWidth: true
-            spacing: 14
+            columns: mainMenuPage.width < 560 ? 1 : mainMenuPage.width < 860 ? 2 : 4
+            columnSpacing: 14
+            rowSpacing: 10
 
             Button {
                 id: pushButton_ConnectDB
@@ -355,7 +379,8 @@ Page {
                                && lineEdit_HostName.text.length > 0
                                && comboBox_DatabaseDriver.currentText.length > 0)
                 font.pixelSize: 16
-                Layout.preferredWidth: 145
+                Layout.fillWidth: true
+                Layout.minimumWidth: 130
                 Layout.preferredHeight: 48
 
                 onClicked: {
@@ -387,7 +412,8 @@ Page {
                 text: "SQL Generator"
                 enabled: databaseConnected && appController.aiEnvironmentReady
                 font.pixelSize: 16
-                Layout.preferredWidth: 165
+                Layout.fillWidth: true
+                Layout.minimumWidth: 145
                 Layout.preferredHeight: 48
 
                 onClicked: {
@@ -405,7 +431,8 @@ Page {
                     enabled: databaseConnected && appController.aiEnvironmentReady
 
                     font.pixelSize: 16
-                    Layout.preferredWidth: 175
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 150
                     Layout.preferredHeight: 48
 
                     onClicked: {
@@ -415,9 +442,6 @@ Page {
                         )
                     }
                 }
-            Item {
-                Layout.fillWidth: true
-            }
 
             Connections {
                     target: appController
@@ -439,7 +463,8 @@ Page {
             Button {
                 text: "Exit"
                 font.pixelSize: 16
-                Layout.preferredWidth: 125
+                Layout.fillWidth: true
+                Layout.minimumWidth: 110
                 Layout.preferredHeight: 48
                 onClicked: Qt.quit()
             }

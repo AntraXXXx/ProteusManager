@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 
 Page {
+    id: codeGeneratorPage
     property StackView appStack
     title: appController.selectedLanguageName + " Code Generator"
 
@@ -13,8 +14,8 @@ Page {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 34
-        spacing: 22
+        anchors.margins: 24
+        spacing: 16
 
         Label {
             text: appController.selectedLanguageName + " Code Generator"
@@ -24,7 +25,18 @@ Page {
             Layout.alignment: Qt.AlignHCenter
         }
 
-        Frame {
+        ScrollView {
+            id: dalContentScroll
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: availableWidth
+            clip: true
+
+            ColumnLayout {
+                width: dalContentScroll.availableWidth
+                spacing: 16
+
+                Frame {
             Layout.fillWidth: true
             padding: 24
 
@@ -75,7 +87,7 @@ Page {
 
                     TextField {
                         id: lineEdit_scriptoutputfolder
-                        Layout.preferredWidth: 750
+                        Layout.fillWidth: true
                         Layout.preferredHeight: 35
                         Layout.alignment: Qt.AlignHCenter
                         text: appController.dalOutputPath
@@ -104,7 +116,7 @@ Page {
             }
         }
 
-        Frame {
+                Frame {
             Layout.fillWidth: true
             padding: 20
 
@@ -134,9 +146,9 @@ Page {
             }
         }
 
-        Frame {
+                Frame {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+                    Layout.preferredHeight: 340
             padding: 24
 
             background: Rectangle {
@@ -185,20 +197,26 @@ Page {
                 }
             }
         }
+            }
+        }
 
         ProgressBar {
             Layout.fillWidth: true
             visible: false
         }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
-            spacing: 14
+            columns: codeGeneratorPage.width < 560 ? 1 : codeGeneratorPage.width < 860 ? 2 : 4
+            columnSpacing: 14
+            rowSpacing: 10
 
             Button {
                 id: button_generateDal
                 text: "Generate DAL"
                 font.pixelSize: 16
+                Layout.fillWidth: true
+                Layout.minimumWidth: 140
                 Layout.preferredHeight: 48
                 enabled: !appController.loading && appController.aiEnvironmentReady
                 onClicked: {
@@ -217,6 +235,8 @@ Page {
                 id: button_executeDal
                 text: "Export DAL"
                 font.pixelSize: 16
+                Layout.fillWidth: true
+                Layout.minimumWidth: 140
                 Layout.preferredHeight: 48
                 enabled: !appController.loading
                          && plainTextEdit_dal.text.indexOf("FILE:") !== -1
@@ -232,16 +252,15 @@ Page {
                 id: progressBar_loading
                 visible: appController.loading
                 indeterminate: true
-                Layout.preferredWidth: 600
-            }
-            Item {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 140
             }
             Button {
                 id: button_dalBack
                 text: "Back"
                 font.pixelSize: 16
-                Layout.preferredWidth: 120
+                Layout.fillWidth: true
+                Layout.minimumWidth: 110
                 Layout.preferredHeight: 48
                 enabled: !appController.loading
                 onClicked: {
