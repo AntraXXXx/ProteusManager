@@ -52,6 +52,15 @@ public:
         return {"C++", "Python"};
     }
 
+    Q_INVOKABLE QStringList databaseDriverNames() const
+    {
+        return {
+            "MySQL / MariaDB",
+            "PostgreSQL",
+            "SQL Server / ODBC"
+        };
+    }
+
     Q_INVOKABLE void setSelectedLanguage(int index)
     {
         m_languageName = index == 1 ? "Python" : "C++";
@@ -98,6 +107,18 @@ public:
     Q_INVOKABLE void setAddAuditFields(bool) {}
 
     Q_INVOKABLE void connectDatabase(const QString&)
+    {
+        m_databaseConnected = true;
+        emit databaseConnectedChanged(true);
+    }
+
+    Q_INVOKABLE void connectOnlineDatabase(
+        const QString&,
+        const QString&,
+        const QString&,
+        const QString&,
+        const QString&,
+        const QString&)
     {
         m_databaseConnected = true;
         emit databaseConnectedChanged(true);
