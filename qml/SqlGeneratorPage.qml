@@ -47,7 +47,8 @@ Page {
             }
 
             ColumnLayout {
-                spacing: 14
+                anchors.fill: parent
+                  spacing: 14
 
                 Label {
                     text: "Classes Source-Folder"
@@ -88,15 +89,15 @@ Page {
                     TextField {
                         id: lineEdit_scriptclassespath
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 35
-                        Layout.preferredWidth: 700
-                        Layout.alignment: Qt.AlignHCenter
+                        Layout.preferredHeight: 42
+
                         text: appController.classesFolderPath
                         font.pixelSize: 16
                         leftPadding: 18
 
                         horizontalAlignment: TextInput.AlignLeft
                         verticalAlignment: TextInput.AlignVCenter
+
                         placeholderText: "Classes folder..."
 
                         onTextChanged: {

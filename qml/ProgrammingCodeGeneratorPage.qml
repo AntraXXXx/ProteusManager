@@ -47,6 +47,7 @@ Page {
             }
 
             ColumnLayout {
+                anchors.fill: parent
                 spacing: 14
 
                 Label {
@@ -87,16 +88,17 @@ Page {
 
                     TextField {
                         id: lineEdit_scriptoutputfolder
+
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 35
-                        Layout.preferredWidth: 700
-                        Layout.alignment: Qt.AlignHCenter
-                        text: appController.dalOutputPath
+                        Layout.preferredHeight: 42
+
                         font.pixelSize: 16
                         leftPadding: 18
 
                         horizontalAlignment: TextInput.AlignLeft
                         verticalAlignment: TextInput.AlignVCenter
+                        text: appController.dalOutputPath
+
 
                         onTextChanged: {
                             appController.setDalOutputPath(text)
