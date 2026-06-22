@@ -704,10 +704,23 @@ void AppController::onGenerateSqlCode()
 
             for (const ParsedAttribute& attribute : cls.attributes)
             {
+                const QString sqlType =
+                    ProgrammingLanguage::mapToSqlType(
+                        attribute.type,
+                        m_selectedLanguageType);
+
                 m_prompt += "- "
                             + attribute.type
                             + " "
-                            + attribute.name;
+                            + attribute.name
+                            + " sql_type="
+                            + sqlType;
+
+                if (ProgrammingLanguage::isNullableType(attribute.type))
+                    m_prompt += " nullable";
+
+                if (ProgrammingLanguage::isCollectionType(attribute.type))
+                    m_prompt += " collection";
 
                 if (tableExists)
                 {
