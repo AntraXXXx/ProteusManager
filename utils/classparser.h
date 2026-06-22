@@ -23,7 +23,9 @@ private:
     QList<ParsedClass> parseFsharpClasses(const QString& content);
     QList<ParsedClass> parsePowershellClasses(const QString& content);
     QList<ParsedClass> parseJavaClasses(const QString& content);
-    bool isKnownPrimitiveType(const QString& type) const;
+    bool isRelationType(
+        const QString& type,
+        ProgrammingLanguage::ProgrammingLanguageType language) const;
 };
 
 #endif

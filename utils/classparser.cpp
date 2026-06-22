@@ -1,6 +1,44 @@
 #include "classparser.h"
 #include <QRegularExpression>
 
+namespace
+{
+QString inferPythonValueType(const QString& value)
+{
+    const QString trimmed =
+        value.trimmed();
+
+    if (trimmed.startsWith("\"")
+        || trimmed.startsWith("'"))
+    {
+        return "str";
+    }
+
+    if (trimmed == "True"
+        || trimmed == "False")
+    {
+        return "bool";
+    }
+
+    if (trimmed.startsWith("["))
+        return "list";
+
+    if (trimmed.contains(
+            QRegularExpression(R"(^-?\d+$)")))
+    {
+        return "int";
+    }
+
+    if (trimmed.contains(
+            QRegularExpression(R"(^-?\d+\.\d+$)")))
+    {
+        return "float";
+    }
+
+    return "unknown";
+}
+}
+
 QList<ParsedClass> ClassParser::parseClasses(
     const QString& content,
     ProgrammingLanguage::ProgrammingLanguageType language)
@@ -51,7 +89,7 @@ QList<ParsedClass> ClassParser::parseCppClasses(const QString& content)
         QString body = match.captured(2);
 
         QRegularExpression memberRegex(
-            R"((?:^|\n)\s*(?:const\s+)?([\w:<>]+)\s+(m_\w+)\s*(?:\{[^;]*\})?\s*;)"
+            R"((?:^|\n)\s*(?:const\s+)?([\w:<>]+(?:\s*[*&])?)\s+(m_\w+)\s*(?:\{[^;]*\})?\s*;)"
             );
 
         auto memberMatches = memberRegex.globalMatch(body);
@@ -67,7 +105,10 @@ QList<ParsedClass> ClassParser::parseCppClasses(const QString& content)
             if (attribute.name.startsWith("m_"))
                 attribute.name = attribute.name.mid(2);
 
-            attribute.isRelation = !isKnownPrimitiveType(attribute.type);
+            attribute.isRelation =
+                isRelationType(
+                    attribute.type,
+                    ProgrammingLanguage::ProgrammingLanguageType::Cplusplus);
 
             parsedClass.attributes.append(attribute);
 
@@ -75,7 +116,7 @@ QList<ParsedClass> ClassParser::parseCppClasses(const QString& content)
         }
 
         QRegularExpression getterRegex(
-            R"((?:^|\n)\s*([\w:<>]+)\s+(\w+)\s*\(\)\s*const\s*;)"
+            R"((?:^|\n)\s*([\w:<>]+(?:\s*[*&])?)\s+(\w+)\s*\(\)\s*const\s*;)"
             );
 
         auto getterMatches = getterRegex.globalMatch(body);
@@ -103,7 +144,10 @@ QList<ParsedClass> ClassParser::parseCppClasses(const QString& content)
                 ParsedAttribute attribute;
                 attribute.type = type;
                 attribute.name = name;
-                attribute.isRelation = !isKnownPrimitiveType(type);
+                attribute.isRelation =
+                    isRelationType(
+                        type,
+                        ProgrammingLanguage::ProgrammingLanguageType::Cplusplus);
 
                 parsedClass.attributes.append(attribute);
 
@@ -122,7 +166,7 @@ QList<ParsedClass> ClassParser::parseCsharpClasses(const QString& content)
     QList<ParsedClass> classes;
 
     QRegularExpression classRegex(
-        R"(class\s+(\w+)\s*\{([\s\S]*?)\})"
+        R"(class\s+(\w+)[^{]*\{([\s\S]*)\})"
         );
 
     auto classMatches = classRegex.globalMatch(content);
@@ -137,7 +181,7 @@ QList<ParsedClass> ClassParser::parseCsharpClasses(const QString& content)
         QString body = match.captured(2);
 
         QRegularExpression propertyRegex(
-            R"((public|private|protected)?\s*(string|int|double|float|bool|DateTime|\w+)\s+(\w+)\s*\{\s*get;\s*set;\s*\})"
+            R"((?:public|private|protected)?\s*([\w.<>\[\]?]+)\s+(\w+)\s*\{\s*get;\s*set;\s*\})"
             );
 
         auto propertyMatches = propertyRegex.globalMatch(body);
@@ -147,9 +191,12 @@ QList<ParsedClass> ClassParser::parseCsharpClasses(const QString& content)
             auto propertyMatch = propertyMatches.next();
 
             ParsedAttribute attribute;
-            attribute.type = propertyMatch.captured(2);
-            attribute.name = propertyMatch.captured(3);
-            attribute.isRelation = !isKnownPrimitiveType(attribute.type);
+            attribute.type = propertyMatch.captured(1);
+            attribute.name = propertyMatch.captured(2);
+            attribute.isRelation =
+                isRelationType(
+                    attribute.type,
+                    ProgrammingLanguage::ProgrammingLanguageType::Csharp);
 
             parsedClass.attributes.append(attribute);
         }
@@ -180,7 +227,9 @@ QList<ParsedClass> ClassParser::parseCClasses(const QString& content)
                            ? match.captured(1)
                            : match.captured(4);
 
-        QRegularExpression attrRegex(R"((int|double|float|bool|char|long|short)\s+(\w+)\s*;)");
+        QRegularExpression attrRegex(
+            R"((?:struct\s+)?([\w_]+(?:\s*\*)?)\s+(\w+)(?:\[[^\]]*\])?\s*;)"
+            );
         auto attrs = attrRegex.globalMatch(body);
 
         while (attrs.hasNext())
@@ -190,7 +239,10 @@ QList<ParsedClass> ClassParser::parseCClasses(const QString& content)
             ParsedAttribute attribute;
             attribute.type = attrMatch.captured(1);
             attribute.name = attrMatch.captured(2);
-            attribute.isRelation = false;
+            attribute.isRelation =
+                isRelationType(
+                    attribute.type,
+                    ProgrammingLanguage::ProgrammingLanguageType::C);
 
             parsedClass.attributes.append(attribute);
         }
@@ -217,7 +269,9 @@ QList<ParsedClass> ClassParser::parsePythonClasses(const QString& content)
 
         QString body = match.captured(2);
 
-        QRegularExpression attrRegex(R"(self\.(\w+)\s*:\s*(\w+)|self\.(\w+)\s*=)");
+        QRegularExpression attrRegex(
+            R"(self\.(\w+)\s*(?::\s*([^=\n#]+))?\s*=\s*([^\n#]+)?)"
+            );
         auto attrs = attrRegex.globalMatch(body);
 
         while (attrs.hasNext())
@@ -225,15 +279,18 @@ QList<ParsedClass> ClassParser::parsePythonClasses(const QString& content)
             auto attrMatch = attrs.next();
 
             ParsedAttribute attribute;
-            attribute.name = !attrMatch.captured(1).isEmpty()
-                                 ? attrMatch.captured(1)
-                                 : attrMatch.captured(3);
+            attribute.name =
+                attrMatch.captured(1);
 
-            attribute.type = !attrMatch.captured(2).isEmpty()
-                                 ? attrMatch.captured(2)
-                                 : "unknown";
+            attribute.type =
+                !attrMatch.captured(2).trimmed().isEmpty()
+                    ? attrMatch.captured(2).trimmed()
+                    : inferPythonValueType(attrMatch.captured(3));
 
-            attribute.isRelation = !isKnownPrimitiveType(attribute.type);
+            attribute.isRelation =
+                isRelationType(
+                    attribute.type,
+                    ProgrammingLanguage::ProgrammingLanguageType::Python);
 
             parsedClass.attributes.append(attribute);
         }
@@ -260,7 +317,9 @@ QList<ParsedClass> ClassParser::parseGoClasses(const QString& content)
 
         QString body = match.captured(2);
 
-        QRegularExpression attrRegex(R"((\w+)\s+(\w+))");
+        QRegularExpression attrRegex(
+            R"(^\s*(\w+)\s+([\*\[\]\w\.]+)(?:\s+`[^`]*`)?\s*$)",
+            QRegularExpression::MultilineOption);
         auto attrs = attrRegex.globalMatch(body);
 
         while (attrs.hasNext())
@@ -270,7 +329,10 @@ QList<ParsedClass> ClassParser::parseGoClasses(const QString& content)
             ParsedAttribute attribute;
             attribute.name = attrMatch.captured(1);
             attribute.type = attrMatch.captured(2);
-            attribute.isRelation = !isKnownPrimitiveType(attribute.type);
+            attribute.isRelation =
+                isRelationType(
+                    attribute.type,
+                    ProgrammingLanguage::ProgrammingLanguageType::Go);
 
             parsedClass.attributes.append(attribute);
         }
@@ -297,7 +359,9 @@ QList<ParsedClass> ClassParser::parseRustClasses(const QString& content)
 
         QString body = match.captured(2);
 
-        QRegularExpression attrRegex(R"((\w+)\s*:\s*([\w:<>]+)\s*,?)");
+        QRegularExpression attrRegex(
+            R"((?:pub\s+)?(\w+)\s*:\s*([\w:<>]+)\s*,?)"
+            );
         auto attrs = attrRegex.globalMatch(body);
 
         while (attrs.hasNext())
@@ -307,7 +371,10 @@ QList<ParsedClass> ClassParser::parseRustClasses(const QString& content)
             ParsedAttribute attribute;
             attribute.name = attrMatch.captured(1);
             attribute.type = attrMatch.captured(2);
-            attribute.isRelation = !isKnownPrimitiveType(attribute.type);
+            attribute.isRelation =
+                isRelationType(
+                    attribute.type,
+                    ProgrammingLanguage::ProgrammingLanguageType::Rust);
 
             parsedClass.attributes.append(attribute);
         }
@@ -334,7 +401,9 @@ QList<ParsedClass> ClassParser::parseFsharpClasses(const QString& content)
 
         QString body = match.captured(2);
 
-        QRegularExpression attrRegex(R"((\w+)\s*:\s*(\w+))");
+        QRegularExpression attrRegex(
+            R"((\w+)\s*:\s*([^\n;]+))"
+            );
         auto attrs = attrRegex.globalMatch(body);
 
         while (attrs.hasNext())
@@ -344,7 +413,10 @@ QList<ParsedClass> ClassParser::parseFsharpClasses(const QString& content)
             ParsedAttribute attribute;
             attribute.name = attrMatch.captured(1);
             attribute.type = attrMatch.captured(2);
-            attribute.isRelation = !isKnownPrimitiveType(attribute.type);
+            attribute.isRelation =
+                isRelationType(
+                    attribute.type,
+                    ProgrammingLanguage::ProgrammingLanguageType::Fsharp);
 
             parsedClass.attributes.append(attribute);
         }
@@ -359,7 +431,7 @@ QList<ParsedClass> ClassParser::parsePowershellClasses(const QString& content)
 {
     QList<ParsedClass> classes;
 
-    QRegularExpression classRegex(R"(class\s+(\w+)\s*\{([\s\S]*?)\})");
+    QRegularExpression classRegex(R"(class\s+(\w+)[^{]*\{([\s\S]*)\})");
     auto matches = classRegex.globalMatch(content);
 
     while (matches.hasNext())
@@ -371,7 +443,9 @@ QList<ParsedClass> ClassParser::parsePowershellClasses(const QString& content)
 
         QString body = match.captured(2);
 
-        QRegularExpression attrRegex(R"(\[(\w+)\]\s*\$(\w+))");
+        QRegularExpression attrRegex(
+            R"(\[([\w\[\].]+)\]\s*\$(\w+))"
+            );
         auto attrs = attrRegex.globalMatch(body);
 
         while (attrs.hasNext())
@@ -381,7 +455,10 @@ QList<ParsedClass> ClassParser::parsePowershellClasses(const QString& content)
             ParsedAttribute attribute;
             attribute.type = attrMatch.captured(1);
             attribute.name = attrMatch.captured(2);
-            attribute.isRelation = !isKnownPrimitiveType(attribute.type);
+            attribute.isRelation =
+                isRelationType(
+                    attribute.type,
+                    ProgrammingLanguage::ProgrammingLanguageType::Powershell);
 
             parsedClass.attributes.append(attribute);
         }
@@ -396,7 +473,7 @@ QList<ParsedClass> ClassParser::parseJavaClasses(const QString& content)
 {
     QList<ParsedClass> classes;
 
-    QRegularExpression classRegex(R"(class\s+(\w+)\s*\{([\s\S]*?)\})");
+    QRegularExpression classRegex(R"(class\s+(\w+)[^{]*\{([\s\S]*)\})");
     auto matches = classRegex.globalMatch(content);
 
     while (matches.hasNext())
@@ -408,7 +485,9 @@ QList<ParsedClass> ClassParser::parseJavaClasses(const QString& content)
 
         QString body = match.captured(2);
 
-        QRegularExpression attrRegex(R"((private|public|protected)?\s*(String|int|double|float|boolean|Date|LocalDate|LocalDateTime|\w+)\s+(\w+)\s*;)");
+        QRegularExpression attrRegex(
+            R"((?:private|public|protected)?\s*(?:final\s+)?([\w.<>\[\]]+)\s+(\w+)\s*(?:=.*)?;)"
+            );
         auto attrs = attrRegex.globalMatch(body);
 
         while (attrs.hasNext())
@@ -416,9 +495,12 @@ QList<ParsedClass> ClassParser::parseJavaClasses(const QString& content)
             auto attrMatch = attrs.next();
 
             ParsedAttribute attribute;
-            attribute.type = attrMatch.captured(2);
-            attribute.name = attrMatch.captured(3);
-            attribute.isRelation = !isKnownPrimitiveType(attribute.type);
+            attribute.type = attrMatch.captured(1);
+            attribute.name = attrMatch.captured(2);
+            attribute.isRelation =
+                isRelationType(
+                    attribute.type,
+                    ProgrammingLanguage::ProgrammingLanguageType::Java);
 
             parsedClass.attributes.append(attribute);
         }
@@ -429,30 +511,11 @@ QList<ParsedClass> ClassParser::parseJavaClasses(const QString& content)
     return classes;
 }
 
-bool ClassParser::isKnownPrimitiveType(const QString& type) const
+bool ClassParser::isRelationType(
+    const QString& type,
+    ProgrammingLanguage::ProgrammingLanguageType language) const
 {
-    return type == "int"
-           || type == "double"
-           || type == "float"
-           || type == "bool"
-           || type == "boolean"
-           || type == "QString"
-           || type == "std::string"
-           || type == "string"
-           || type == "String"
-           || type == "char"
-           || type == "long"
-           || type == "short"
-           || type == "QDate"
-           || type == "QDateTime"
-           || type == "DateTime"
-           || type == "Date"
-           || type == "LocalDate"
-           || type == "LocalDateTime"
-           || type == "i32"
-           || type == "i64"
-           || type == "f32"
-           || type == "f64"
-           || type == "String"
-           || type == "str";
+    return ProgrammingLanguage::isRelationshipType(
+        type,
+        language);
 }
