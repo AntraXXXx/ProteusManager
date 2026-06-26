@@ -4,11 +4,11 @@ ProteusManager is a Qt/C++-based desktop application for the automated generatio
 
 ## Project Description
 
-The application analyzes class structures from different programming languages and automatically generates relational database structures as well as matching database interface classes.
+ProteusManager analyzes class structures from different programming languages and automatically generates relational database structures as well as matching database interface classes.
 
-In addition, a locally running AI via Ollama supports the analysis of class models and assists in generating and optimizing SQL tables, repository classes, and database access layers.
+In addition, a locally running AI via Ollama supports SQL generation, schema analysis, database normalization, repository class generation, and database access layer (DAL) generation.
 
-The goal of the project is to reduce manual effort during database development and improve the consistency and maintainability of database structures.
+The goal of the project is to reduce manual effort during database development and improve the consistency, maintainability, and quality of generated database structures.
 
 ---
 
@@ -67,8 +67,7 @@ Examples:
 - codellama
 - deepseek-coder
 
-The application communicates with Ollama through its local API and uses the selected AI model for SQL generation, schema analysis, database normalization, and DAL generation.
-=======
+---
 # Local AI Setup
 
 ProteusManager requires a reachable Ollama endpoint and at least one installed
