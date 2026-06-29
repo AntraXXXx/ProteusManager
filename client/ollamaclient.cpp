@@ -169,6 +169,11 @@ void OllamaClient::generate(const QString& model,
 
             emit dalReceived(response);
         }
+        else if (type == GenerateType::Normalization)
+        {
+            emit normalizationReceived(
+                response.trimmed());
+        }
 
         reply->deleteLater();
     });

@@ -19,7 +19,8 @@ public:
     enum class GenerateType
     {
         Sql,
-        Dal
+        Dal,
+        Normalization
     };
     void generate(const QString& model, const QString& prompt, GenerateType type);
     void checkConnection();
@@ -34,6 +35,7 @@ signals:
     void errorOccurred(const QString& errorMessage);
     void sqlReceived(const QString& sql);
     void dalReceived(const QString& code);
+    void normalizationReceived(const QString& sql);
     void isSqlCode(bool isSqlCode);
 public:
     QString getLastResponse() const;

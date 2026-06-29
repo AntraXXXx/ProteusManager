@@ -128,6 +128,7 @@ class OllamaClientTest : public QObject
 private slots:
     void fetchesModelsFromOllamaEndpoint();
     void cleansGeneratedSqlResponse();
+    void routesNormalizationResponse();
     void reportsConnectionErrors();
 };
 
@@ -168,6 +169,29 @@ void OllamaClientTest::cleansGeneratedSqlResponse()
     QCOMPARE(
         sqlSpy.takeFirst().at(0).toString(),
         QString("CREATE TABLE Customer (id INTEGER PRIMARY KEY);"));
+}
+
+void OllamaClientTest::routesNormalizationResponse()
+{
+    FakeOllamaServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+
+    OllamaClient client(server.baseUrl());
+    QSignalSpy normalizationSpy(
+        &client,
+        &OllamaClient::normalizationReceived);
+    QSignalSpy sqlSpy(
+        &client,
+        &OllamaClient::sqlReceived);
+
+    client.generate(
+        "agent-one",
+        "normalize schema",
+        OllamaClient::GenerateType::Normalization);
+
+    QVERIFY(normalizationSpy.wait(2000));
+    QCOMPARE(normalizationSpy.count(), 1);
+    QCOMPARE(sqlSpy.count(), 0);
 }
 
 void OllamaClientTest::reportsConnectionErrors()

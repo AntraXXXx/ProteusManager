@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
 
 class DatabaseManager
 {
@@ -23,12 +24,28 @@ public:
     bool columnExists(const QString& tableName, const QString& columnName);
     bool hasRows(const QString& tableName);
     bool isValidSql(const QString& sql);
+    bool isValidMigrationSql(const QString& sql) const;
+    bool validateMigrationPreview(const QString& migrationSql);
+    bool executeMigration(const QString& migrationSql);
     void setConnection(const bool connected);
     void setDatabasePath(const QString& path);
     QString getSqlConnectionName() const;
-    QString buildSchemaDescription();
+    QString buildSchemaDescription(
+        const QStringList& tableNames = {});
+    QString buildNormalizationAnalysis(
+        const QStringList& tableNames = {},
+        int sampleLimit = 5);
+    bool hasNormalizationEvidence(
+        const QStringList& tableNames = {});
     QStringList getColumnNames(const QString& tableName);
     QStringList getTableNames();
+    QVariantList buildSchemaDiagram();
+    QVariantList buildSchemaDiagramForTables(
+        const QStringList& tableNames);
+    QVariantList buildSchemaDiagramWithMigration(
+        const QString& migrationSql);
+    QStringList migrationTargetTableNames(
+        const QString& migrationSql) const;
     QString databaseDriver() const;
     QString lastError() const;
 private:

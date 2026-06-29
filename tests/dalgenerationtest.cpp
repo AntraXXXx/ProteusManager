@@ -11,10 +11,53 @@ class DalGenerationTest : public QObject
     Q_OBJECT
 
 private slots:
+    void appliesSqlTableNamingConvention();
     void exportsGeneratedDalFiles();
     void rejectsUnsafeGeneratedFileNames();
     void reportsMissingOutputPath();
 };
+
+void DalGenerationTest::appliesSqlTableNamingConvention()
+{
+    const QString response =
+        "FILE: userrepository.h\n"
+        "#ifndef USERREPOSITORY_H\n"
+        "#define USERREPOSITORY_H\n"
+        "class QSqlQueryModel;\n"
+        "class UserRepository {\n"
+        "public:\n"
+        "    UserRepository();\n"
+        "};\n"
+        "#endif // USERREPOSITORY_H\n\n"
+        "FILE: userrepository.cpp\n"
+        "#include \"userrepository.h\"\n"
+        "UserRepository::UserRepository() {}\n"
+        "const char* sql = \"INSERT INTO User (name) VALUES (:name)\";\n";
+
+    const QString normalized =
+        DalFileExporter::applySqlNamingConvention(
+            response,
+            {"User"});
+
+    QVERIFY(normalized.contains("FILE: SqlUser.h"));
+    QVERIFY(normalized.contains("FILE: SqlUser.cpp"));
+    QVERIFY(normalized.contains("class SqlUser"));
+    QVERIFY(normalized.contains("class QSqlQueryModel;"));
+    QVERIFY(normalized.contains("SqlUser::SqlUser()"));
+    QVERIFY(normalized.contains("#include \"SqlUser.h\""));
+    QVERIFY(normalized.contains("SQLUSER_H"));
+    QVERIFY(normalized.contains("INSERT INTO User"));
+    QVERIFY(!normalized.contains("UserRepository"));
+
+    const QString userList =
+        DalFileExporter::applySqlNamingConvention(
+            "FILE: UserListRepository.cs\n"
+            "public class UserListRepository {}",
+            {"UserList"});
+
+    QVERIFY(userList.contains("FILE: SqlUserList.cs"));
+    QVERIFY(userList.contains("class SqlUserList"));
+}
 
 void DalGenerationTest::exportsGeneratedDalFiles()
 {

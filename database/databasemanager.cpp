@@ -5,10 +5,14 @@
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QSqlField>
+#include <QSqlIndex>
 #include <QSqlRecord>
 
 #include <QDebug>
+#include <QHash>
 #include <QRegularExpression>
+#include <QSet>
+#include <QVariantMap>
 
 namespace
 {
@@ -31,6 +35,418 @@ QString escapeTableIdentifier(const QSqlDatabase& db, const QString& tableName)
 
     return quoteSqliteIdentifier(tableName);
 }
+
+QStringList sqlStatements(const QString& sql)
+{
+    return sql.split(
+        ";",
+        Qt::SkipEmptyParts);
+}
+
+QString stripLeadingSqlComments(QString statement)
+{
+    statement = statement.trimmed();
+
+    while (statement.startsWith("--"))
+    {
+        const int lineEnd = statement.indexOf('\n');
+        if (lineEnd == -1)
+            return {};
+
+        statement =
+            statement.mid(lineEnd + 1).trimmed();
+    }
+
+    return statement;
+}
+
+QString cleanIdentifier(QString identifier)
+{
+    identifier = identifier.trimmed();
+
+    if (identifier.size() >= 2)
+    {
+        const QChar first = identifier.front();
+        const QChar last = identifier.back();
+
+        if ((first == '"' && last == '"')
+            || (first == '`' && last == '`')
+            || (first == '[' && last == ']'))
+        {
+            identifier = identifier.mid(1, identifier.size() - 2);
+        }
+    }
+
+    return identifier;
+}
+
+QStringList splitTableDefinitions(const QString& definitions)
+{
+    QStringList result;
+    QString current;
+    int depth = 0;
+    QChar quote;
+
+    for (const QChar character : definitions)
+    {
+        if (!quote.isNull())
+        {
+            current += character;
+            if (character == quote)
+                quote = {};
+            continue;
+        }
+
+        if (character == '\'' || character == '"' || character == '`')
+        {
+            quote = character;
+            current += character;
+        }
+        else if (character == '(')
+        {
+            ++depth;
+            current += character;
+        }
+        else if (character == ')')
+        {
+            --depth;
+            current += character;
+        }
+        else if (character == ',' && depth == 0)
+        {
+            result.append(current.trimmed());
+            current.clear();
+        }
+        else
+        {
+            current += character;
+        }
+    }
+
+    if (!current.trimmed().isEmpty())
+        result.append(current.trimmed());
+
+    return result;
+}
+
+QVariantMap relationEntry(
+    const QString& column,
+    const QString& referenceTable,
+    const QString& referenceColumn)
+{
+    return {
+        {"column", column},
+        {"referenceTable", referenceTable},
+        {"referenceColumn", referenceColumn}
+    };
+}
+
+QVariantMap columnEntry(
+    const QString& name,
+    const QString& type,
+    bool primaryKey,
+    const QVariantMap& relation = {})
+{
+    return {
+        {"name", name},
+        {"type", type},
+        {"primaryKey", primaryKey},
+        {"foreignKey", !relation.isEmpty()},
+        {"referenceTable", relation.value("referenceTable")},
+        {"referenceColumn", relation.value("referenceColumn")}
+    };
+}
+
+int tableIndex(const QVariantList& schema, const QString& tableName)
+{
+    for (int i = 0; i < schema.size(); ++i)
+    {
+        if (schema.at(i).toMap().value("name").toString().compare(
+                tableName,
+                Qt::CaseInsensitive) == 0)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+QStringList repeatedColumnGroupDescriptions(
+    const QVariantMap& table)
+{
+    const QRegularExpression numberedColumn(
+        "^(.+?)[_\\-\\s]+(\\d+)[_\\-\\s]+(.+)$",
+        QRegularExpression::CaseInsensitiveOption);
+    QHash<QString, QSet<QString>> ordinalsByPrefix;
+    QHash<QString, QSet<QString>> attributesByPrefix;
+    QHash<QString, QString> displayPrefixByKey;
+
+    for (const QVariant& columnValue :
+         table.value("columns").toList())
+    {
+        const QString columnName =
+            columnValue.toMap().value("name").toString();
+        const QRegularExpressionMatch match =
+            numberedColumn.match(columnName);
+
+        if (!match.hasMatch())
+            continue;
+
+        const QString displayPrefix =
+            cleanIdentifier(match.captured(1));
+        const QString key =
+            displayPrefix.toLower();
+        displayPrefixByKey.insert(key, displayPrefix);
+        ordinalsByPrefix[key].insert(match.captured(2));
+        attributesByPrefix[key].insert(
+            cleanIdentifier(match.captured(3)));
+    }
+
+    QStringList descriptions;
+    for (auto iterator = ordinalsByPrefix.cbegin();
+         iterator != ordinalsByPrefix.cend();
+         ++iterator)
+    {
+        if (iterator.value().size() < 2)
+            continue;
+
+        QStringList ordinals =
+            iterator.value().values();
+        QStringList attributes =
+            attributesByPrefix.value(iterator.key()).values();
+        ordinals.sort(Qt::CaseInsensitive);
+        attributes.sort(Qt::CaseInsensitive);
+
+        descriptions.append(
+            "prefix "
+            + displayPrefixByKey.value(iterator.key())
+            + ": ordinals="
+            + ordinals.join(",")
+            + ", attributes="
+            + attributes.join(","));
+    }
+
+    descriptions.sort(Qt::CaseInsensitive);
+    return descriptions;
+}
+
+bool identifierSignalsDenormalizedData(
+    QString identifier)
+{
+    identifier = identifier.toLower();
+    return identifier.contains("unnormalisiert")
+           || identifier.contains("nicht_normalisiert")
+           || identifier.contains("nichtnormalisiert")
+           || identifier.contains("not_normalized")
+           || identifier.contains("notnormalized")
+           || identifier.contains("unnormalized")
+           || identifier.contains("denormalized")
+           || identifier.contains("denormalisiert");
+}
+
+bool columnNameSuggestsListValue(QString columnName)
+{
+    columnName = columnName.toLower();
+    return columnName.contains("ids")
+           || columnName.contains("codes")
+           || columnName.contains("artikel")
+           || columnName.contains("article")
+           || columnName.contains("produkt")
+           || columnName.contains("product")
+           || columnName.contains("mengen")
+           || columnName.contains("quantities")
+           || columnName.contains("preise")
+           || columnName.contains("prices")
+           || columnName.contains("namen")
+           || columnName.contains("names")
+           || columnName.contains("liste")
+           || columnName.contains("list");
+}
+
+QVariantList parseCreatedTables(const QString& migrationSql)
+{
+    QVariantList tables;
+    const QString identifier =
+        "[`\\\"\\[]?[A-Za-z_][A-Za-z0-9_]*[`\\\"\\]]?";
+    const QRegularExpression createTable(
+        "^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?("
+            + identifier
+            + ")\\s*\\(([\\s\\S]*)\\)\\s*$",
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression columnDefinition(
+        "^(" + identifier + ")\\s+([^\\s,]+)([\\s\\S]*)$",
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression referenceDefinition(
+        "\\bREFERENCES\\s+(" + identifier + ")\\s*\\(\\s*("
+            + identifier
+            + ")\\s*\\)",
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression tableForeignKey(
+        "^(?:CONSTRAINT\\s+" + identifier + "\\s+)?FOREIGN\\s+KEY\\s*"
+        "\\(\\s*(" + identifier + ")\\s*\\)\\s+REFERENCES\\s+("
+            + identifier
+            + ")\\s*\\(\\s*("
+            + identifier
+            + ")\\s*\\)",
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression tablePrimaryKey(
+        "^(?:CONSTRAINT\\s+" + identifier + "\\s+)?PRIMARY\\s+KEY\\s*"
+        "\\(([^)]*)\\)",
+        QRegularExpression::CaseInsensitiveOption);
+
+    for (QString statement : sqlStatements(migrationSql))
+    {
+        statement = stripLeadingSqlComments(statement);
+        const QRegularExpressionMatch createMatch =
+            createTable.match(statement.trimmed());
+
+        if (!createMatch.hasMatch())
+            continue;
+
+        QVariantList columns;
+        QVariantList relations;
+        QSet<QString> tablePrimaryKeys;
+        const QStringList definitions =
+            splitTableDefinitions(createMatch.captured(2));
+
+        for (const QString& definition : definitions)
+        {
+            const QRegularExpressionMatch primaryMatch =
+                tablePrimaryKey.match(definition);
+            if (primaryMatch.hasMatch())
+            {
+                for (const QString& key : primaryMatch.captured(1).split(','))
+                    tablePrimaryKeys.insert(cleanIdentifier(key).toLower());
+                continue;
+            }
+
+            const QRegularExpressionMatch foreignMatch =
+                tableForeignKey.match(definition);
+            if (foreignMatch.hasMatch())
+            {
+                relations.append(relationEntry(
+                    cleanIdentifier(foreignMatch.captured(1)),
+                    cleanIdentifier(foreignMatch.captured(2)),
+                    cleanIdentifier(foreignMatch.captured(3))));
+                continue;
+            }
+
+            const QRegularExpressionMatch columnMatch =
+                columnDefinition.match(definition);
+            if (!columnMatch.hasMatch())
+                continue;
+
+            const QString name =
+                cleanIdentifier(columnMatch.captured(1));
+            const QString suffix =
+                columnMatch.captured(3);
+            const QRegularExpressionMatch referenceMatch =
+                referenceDefinition.match(suffix);
+            QVariantMap relation;
+
+            if (referenceMatch.hasMatch())
+            {
+                relation = relationEntry(
+                    name,
+                    cleanIdentifier(referenceMatch.captured(1)),
+                    cleanIdentifier(referenceMatch.captured(2)));
+                relations.append(relation);
+            }
+
+            columns.append(columnEntry(
+                name,
+                columnMatch.captured(2),
+                suffix.contains(
+                    QRegularExpression(
+                        "\\bPRIMARY\\s+KEY\\b",
+                        QRegularExpression::CaseInsensitiveOption)),
+                relation));
+        }
+
+        for (int i = 0; i < columns.size(); ++i)
+        {
+            QVariantMap column = columns.at(i).toMap();
+            if (tablePrimaryKeys.contains(
+                    column.value("name").toString().toLower()))
+            {
+                column["primaryKey"] = true;
+                columns[i] = column;
+            }
+
+            for (const QVariant& relationValue : relations)
+            {
+                const QVariantMap relation = relationValue.toMap();
+                if (relation.value("column").toString().compare(
+                        column.value("name").toString(),
+                        Qt::CaseInsensitive) == 0)
+                {
+                    column["foreignKey"] = true;
+                    column["referenceTable"] =
+                        relation.value("referenceTable");
+                    column["referenceColumn"] =
+                        relation.value("referenceColumn");
+                    columns[i] = column;
+                }
+            }
+        }
+
+        tables.append(QVariantMap{
+            {"name", cleanIdentifier(createMatch.captured(1))},
+            {"columns", columns},
+            {"relations", relations},
+            {"proposed", true}
+        });
+    }
+
+    return tables;
+}
+
+QString incompatibleMigrationFeature(
+    const QString& driverName,
+    const QString& sql)
+{
+    QString pattern;
+
+    if (driverName == "QSQLITE")
+    {
+        pattern =
+            "\\b(CHARINDEX|STRING_SPLIT|SPLIT_PART|UNNEST|GENERATE_SERIES|CONCAT)\\s*\\("
+            "|\\bTOP\\s+\\d+\\b|\\bAUTO_INCREMENT\\b|\\bIDENTITY\\s*\\(";
+    }
+    else if (driverName.startsWith("QPSQL"))
+    {
+        pattern =
+            "\\b(INSTR|IFNULL|CHARINDEX|STRING_SPLIT)\\s*\\("
+            "|`|\\bAUTO_INCREMENT\\b|\\bIDENTITY\\s*\\(";
+    }
+    else if (driverName.startsWith("QMYSQL"))
+    {
+        pattern =
+            "\\b(CHARINDEX|STRING_SPLIT|SPLIT_PART|UNNEST)\\s*\\("
+            "|\\bTOP\\s+\\d+\\b|\\bIDENTITY\\s*\\(";
+    }
+    else if (driverName.startsWith("QODBC"))
+    {
+        pattern =
+            "\\b(INSTR|SUBSTR|STRPOS|SPLIT_PART|UNNEST)\\s*\\("
+            "|\\bLIMIT\\s+\\d+\\b|`|\\bAUTO_INCREMENT\\b|\\|\\|";
+    }
+
+    if (pattern.isEmpty())
+        return {};
+
+    const QRegularExpression incompatible(
+        pattern,
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match =
+        incompatible.match(sql);
+
+    return match.hasMatch()
+               ? match.captured(0)
+               : QString();
+}
+
 }
 
 bool DatabaseManager::openDatabase(const QString& connectionName,
@@ -248,14 +664,20 @@ QStringList DatabaseManager::getTableNames()
     return tables;
 }
 
-QString DatabaseManager::buildSchemaDescription()
+QString DatabaseManager::buildSchemaDescription(
+    const QStringList& tableNames)
 {
     QString result =
         "Current "
         + databaseDriver()
         + " database schema:\n\n";
 
-    for (const QString& table : getTableNames())
+    const QStringList selectedTables =
+        tableNames.isEmpty()
+            ? getTableNames()
+            : tableNames;
+
+    for (const QString& table : selectedTables)
     {
         result += "Table: " + table + "\n";
 
@@ -300,6 +722,282 @@ QString DatabaseManager::buildSchemaDescription()
     }
 
     return result;
+}
+
+QString DatabaseManager::buildNormalizationAnalysis(
+    const QStringList& tableNames,
+    int sampleLimit)
+{
+    QSqlDatabase db =
+        QSqlDatabase::database(m_dataBaseConnectionName);
+    if (!db.isOpen())
+        return {};
+
+    sampleLimit = qBound(1, sampleLimit, 10);
+    QString result =
+        "Read-only normalization analysis. Identifier names are authoritative; "
+        "infer their natural language and keep new names in the same language.\n"
+        "Delimiter findings are evidence only. A comma in an address is not "
+        "automatically a repeating group. Compare related columns and token counts.\n"
+        "Numbered columns such as product_1_name, product_2_name, produkt_1_name "
+        "or produkt_2_name are repeating column group evidence.\n\n";
+    const QVariantList schema =
+        tableNames.isEmpty()
+            ? buildSchemaDiagram()
+            : buildSchemaDiagramForTables(tableNames);
+
+    const auto printableValue = [](const QVariant& value)
+    {
+        if (!value.isValid() || value.isNull())
+            return QString("NULL");
+
+        if (value.metaType().id() == QMetaType::QByteArray)
+            return QString("<binary>");
+
+        QString text = value.toString();
+        text.replace('\\', "\\\\");
+        text.replace('\n', "\\n");
+        text.replace('\r', "\\r");
+        text.replace('\'', "''");
+        if (text.size() > 120)
+            text = text.left(117) + "...";
+        return "'" + text + "'";
+    };
+
+    for (const QVariant& tableValue : schema)
+    {
+        const QVariantMap table = tableValue.toMap();
+        const QString tableName =
+            table.value("name").toString();
+        const QString escapedTable =
+            escapeTableIdentifier(db, tableName);
+        result += "Table: " + tableName + "\nColumns:\n";
+
+        for (const QVariant& columnValue :
+             table.value("columns").toList())
+        {
+            const QVariantMap column = columnValue.toMap();
+            result += "- "
+                      + column.value("name").toString()
+                      + " "
+                      + column.value("type").toString();
+            if (column.value("primaryKey").toBool())
+                result += " [PK]";
+            if (column.value("foreignKey").toBool())
+            {
+                result += " [FK -> "
+                          + column.value("referenceTable").toString()
+                          + "."
+                          + column.value("referenceColumn").toString()
+                          + "]";
+            }
+            result += "\n";
+        }
+
+        const QStringList repeatedGroups =
+            repeatedColumnGroupDescriptions(table);
+        if (!repeatedGroups.isEmpty())
+        {
+            result += "Repeated numbered column group evidence:\n";
+            for (const QString& group : repeatedGroups)
+                result += "- " + group + "\n";
+        }
+
+        QSqlQuery countQuery(db);
+        if (countQuery.exec(
+                "SELECT COUNT(*) FROM " + escapedTable)
+            && countQuery.next())
+        {
+            result += "Row count: "
+                      + countQuery.value(0).toString()
+                      + "\n";
+        }
+
+        constexpr int profileLimit = 200;
+        const QString sampleSql =
+            db.driverName().startsWith("QODBC")
+                ? QString("SELECT TOP %1 * FROM %2")
+                      .arg(profileLimit)
+                      .arg(escapedTable)
+                : QString("SELECT * FROM %1 LIMIT %2")
+                      .arg(escapedTable)
+                      .arg(profileLimit);
+        QSqlQuery sampleQuery(db);
+        QHash<QString, QStringList> delimiterProfiles;
+        int sampleNumber = 0;
+
+        if (sampleQuery.exec(sampleSql))
+        {
+            const QSqlRecord record = sampleQuery.record();
+            result += "Sample rows (maximum "
+                      + QString::number(sampleLimit)
+                      + "):\n";
+
+            while (sampleQuery.next())
+            {
+                ++sampleNumber;
+                const bool includeSample =
+                    sampleNumber <= sampleLimit;
+                if (includeSample)
+                {
+                    result += "- row "
+                              + QString::number(sampleNumber)
+                              + ": ";
+                }
+
+                for (int i = 0; i < record.count(); ++i)
+                {
+                    const QString columnName =
+                        record.fieldName(i);
+                    const QVariant value = sampleQuery.value(i);
+                    if (includeSample)
+                    {
+                        if (i > 0)
+                            result += " | ";
+                        result += columnName
+                                  + "="
+                                  + printableValue(value);
+                    }
+
+                    const QString text = value.toString();
+                    const QStringList delimiters = {",", ";", "|"};
+                    for (const QString& delimiter : delimiters)
+                    {
+                        const int tokenCount =
+                            text.split(
+                                    delimiter,
+                                    Qt::SkipEmptyParts)
+                                .size();
+                        if (tokenCount > 1)
+                        {
+                            const QString key =
+                                columnName + "\t" + delimiter;
+                            delimiterProfiles[key].append(
+                                QString::number(tokenCount));
+                        }
+                    }
+                }
+
+                if (includeSample)
+                    result += "\n";
+            }
+
+            result += "Profiled rows for delimiter evidence: "
+                      + QString::number(sampleNumber)
+                      + " (maximum "
+                      + QString::number(profileLimit)
+                      + ")\n";
+        }
+
+        if (!delimiterProfiles.isEmpty())
+        {
+            result += "Possible delimited-value evidence:\n";
+            for (auto iterator = delimiterProfiles.cbegin();
+                 iterator != delimiterProfiles.cend();
+                 ++iterator)
+            {
+                const QStringList keyParts =
+                    iterator.key().split('\t');
+                const QString delimiterName =
+                    keyParts.value(1) == ","
+                        ? "comma"
+                        : keyParts.value(1) == ";"
+                              ? "semicolon"
+                              : "pipe";
+                result += "- column "
+                          + keyParts.value(0)
+                          + ": delimiter="
+                          + delimiterName
+                          + ", token-counts="
+                          + iterator.value().join(",")
+                          + "\n";
+            }
+        }
+
+        result += "\n";
+    }
+
+    return result;
+}
+
+bool DatabaseManager::hasNormalizationEvidence(
+    const QStringList& tableNames)
+{
+    QSqlDatabase db =
+        QSqlDatabase::database(m_dataBaseConnectionName);
+    if (!db.isOpen())
+        return false;
+
+    const QVariantList schema =
+        tableNames.isEmpty()
+            ? buildSchemaDiagram()
+            : buildSchemaDiagramForTables(tableNames);
+
+    for (const QVariant& tableValue : schema)
+    {
+        const QVariantMap table = tableValue.toMap();
+        const QString tableName =
+            table.value("name").toString();
+
+        if (identifierSignalsDenormalizedData(tableName))
+            return true;
+
+        if (!repeatedColumnGroupDescriptions(table).isEmpty())
+            return true;
+
+        const QString escapedTable =
+            escapeTableIdentifier(db, tableName);
+        const QString sampleSql =
+            db.driverName().startsWith("QODBC")
+                ? QString("SELECT TOP 200 * FROM %1")
+                      .arg(escapedTable)
+                : QString("SELECT * FROM %1 LIMIT 200")
+                      .arg(escapedTable);
+        QSqlQuery sampleQuery(db);
+
+        if (!sampleQuery.exec(sampleSql))
+            continue;
+
+        const QSqlRecord record = sampleQuery.record();
+        const QStringList delimiters = {",", ";", "|"};
+        while (sampleQuery.next())
+        {
+            QHash<QString, int> alignedTokenCounts;
+
+            for (int i = 0; i < record.count(); ++i)
+            {
+                const QString columnName =
+                    record.fieldName(i);
+                const QString text =
+                    sampleQuery.value(i).toString();
+
+                for (const QString& delimiter : delimiters)
+                {
+                    const int tokenCount =
+                        text.split(
+                                delimiter,
+                                Qt::SkipEmptyParts)
+                            .size();
+                    if (tokenCount <= 1)
+                        continue;
+
+                    if (columnNameSuggestsListValue(columnName))
+                        return true;
+
+                    const QString key =
+                        delimiter
+                        + ":"
+                        + QString::number(tokenCount);
+                    alignedTokenCounts[key] =
+                        alignedTokenCounts.value(key) + 1;
+                    if (alignedTokenCounts.value(key) >= 2)
+                        return true;
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 QString DatabaseManager::databaseDriver() const
@@ -388,6 +1086,200 @@ QStringList DatabaseManager::getColumnNames(
     return columns;
 }
 
+QVariantList DatabaseManager::buildSchemaDiagram()
+{
+    QVariantList schema;
+    QSqlDatabase db =
+        QSqlDatabase::database(m_dataBaseConnectionName);
+
+    if (!db.isOpen())
+        return schema;
+
+    QStringList tables = getTableNames();
+    tables.sort(Qt::CaseInsensitive);
+
+    for (const QString& table : tables)
+    {
+        QVariantList columns;
+        QVariantList relations;
+        QHash<QString, QVariantMap> relationByColumn;
+
+        if (db.driverName() == "QSQLITE")
+        {
+            QSqlQuery foreignKeys(
+                QString("PRAGMA foreign_key_list(%1)")
+                    .arg(quoteSqliteIdentifier(table)),
+                db);
+
+            while (foreignKeys.next())
+            {
+                const QVariantMap relation = relationEntry(
+                    foreignKeys.value(3).toString(),
+                    foreignKeys.value(2).toString(),
+                    foreignKeys.value(4).toString());
+                relations.append(relation);
+                relationByColumn.insert(
+                    foreignKeys.value(3).toString().toLower(),
+                    relation);
+            }
+
+            QSqlQuery tableInfo(
+                QString("PRAGMA table_info(%1)")
+                    .arg(quoteSqliteIdentifier(table)),
+                db);
+
+            while (tableInfo.next())
+            {
+                const QString name =
+                    tableInfo.value(1).toString();
+                columns.append(columnEntry(
+                    name,
+                    tableInfo.value(2).toString(),
+                    tableInfo.value(5).toInt() > 0,
+                    relationByColumn.value(name.toLower())));
+            }
+        }
+        else
+        {
+            QSqlQuery foreignKeys(db);
+
+            if (db.driverName().startsWith("QMYSQL"))
+            {
+                foreignKeys.prepare(
+                    "SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, "
+                    "REFERENCED_COLUMN_NAME "
+                    "FROM information_schema.KEY_COLUMN_USAGE "
+                    "WHERE TABLE_SCHEMA = DATABASE() "
+                    "AND TABLE_NAME = ? "
+                    "AND REFERENCED_TABLE_NAME IS NOT NULL");
+                foreignKeys.addBindValue(table);
+                foreignKeys.exec();
+            }
+            else if (db.driverName().startsWith("QPSQL"))
+            {
+                foreignKeys.prepare(
+                    "SELECT kcu.column_name, ccu.table_name, "
+                    "ccu.column_name "
+                    "FROM information_schema.table_constraints tc "
+                    "JOIN information_schema.key_column_usage kcu "
+                    "ON tc.constraint_name = kcu.constraint_name "
+                    "AND tc.table_schema = kcu.table_schema "
+                    "JOIN information_schema.constraint_column_usage ccu "
+                    "ON ccu.constraint_name = tc.constraint_name "
+                    "AND ccu.table_schema = tc.table_schema "
+                    "WHERE tc.constraint_type = 'FOREIGN KEY' "
+                    "AND tc.table_schema = current_schema() "
+                    "AND tc.table_name = ?");
+                foreignKeys.addBindValue(table);
+                foreignKeys.exec();
+            }
+
+            while (foreignKeys.next())
+            {
+                const QVariantMap relation = relationEntry(
+                    foreignKeys.value(0).toString(),
+                    foreignKeys.value(1).toString(),
+                    foreignKeys.value(2).toString());
+                relations.append(relation);
+                relationByColumn.insert(
+                    foreignKeys.value(0).toString().toLower(),
+                    relation);
+            }
+
+            const QSqlRecord record = db.record(table);
+            const QSqlIndex primaryKey = db.primaryIndex(table);
+
+            for (int i = 0; i < record.count(); ++i)
+            {
+                const QSqlField field = record.field(i);
+                columns.append(columnEntry(
+                    field.name(),
+                    QString::fromUtf8(field.metaType().name()),
+                    primaryKey.indexOf(field.name()) >= 0,
+                    relationByColumn.value(field.name().toLower())));
+            }
+        }
+
+        schema.append(QVariantMap{
+            {"name", table},
+            {"columns", columns},
+            {"relations", relations},
+            {"proposed", false}
+        });
+    }
+
+    return schema;
+}
+
+QVariantList DatabaseManager::buildSchemaDiagramForTables(
+    const QStringList& tableNames)
+{
+    const QVariantList completeSchema =
+        buildSchemaDiagram();
+    QVariantList filteredSchema;
+
+    for (const QString& tableName : tableNames)
+    {
+        const int index =
+            tableIndex(completeSchema, tableName);
+        if (index >= 0)
+            filteredSchema.append(completeSchema.at(index));
+    }
+
+    return filteredSchema;
+}
+
+QStringList DatabaseManager::migrationTargetTableNames(
+    const QString& migrationSql) const
+{
+    QStringList tableNames;
+    for (const QVariant& tableValue :
+         parseCreatedTables(migrationSql))
+    {
+        const QString tableName =
+            tableValue.toMap().value("name").toString();
+        if (!tableName.isEmpty()
+            && !tableNames.contains(
+                tableName,
+                Qt::CaseInsensitive))
+        {
+            tableNames.append(tableName);
+        }
+    }
+
+    return tableNames;
+}
+
+QVariantList DatabaseManager::buildSchemaDiagramWithMigration(
+    const QString& migrationSql)
+{
+    if (!isValidMigrationSql(migrationSql))
+        return {};
+
+    const QVariantList proposedTables =
+        parseCreatedTables(migrationSql);
+    const QVariantList currentSchema =
+        buildSchemaDiagram();
+    QVariantList normalizedSchema;
+
+    for (const QVariant& proposedTable : proposedTables)
+    {
+        const QString name =
+            proposedTable.toMap().value("name").toString();
+        const int existingIndex =
+            tableIndex(currentSchema, name);
+
+        if (existingIndex >= 0)
+            normalizedSchema.append(currentSchema.at(existingIndex));
+        else
+            normalizedSchema.append(proposedTable);
+    }
+
+    return normalizedSchema.isEmpty()
+               ? currentSchema
+               : normalizedSchema;
+}
+
 bool DatabaseManager::isValidSql(
     const QString& sql)
 {
@@ -443,6 +1335,245 @@ bool DatabaseManager::isValidSql(
     }
 
     return hasValidStatement;
+}
+
+bool DatabaseManager::isValidMigrationSql(
+    const QString& sql) const
+{
+    if (sql.trimmed().isEmpty())
+        return false;
+
+    const QRegularExpression forbiddenStatement(
+        "\\b(DROP|DELETE|TRUNCATE|UPDATE|REPLACE|ATTACH|DETACH|VACUUM|BEGIN|COMMIT|ROLLBACK)\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QRegularExpression alterDropStatement(
+        "^ALTER\\s+TABLE\\b[\\s\\S]*\\bDROP\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QRegularExpression createTableStatement(
+        "^CREATE\\s+TABLE\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QRegularExpression createIndexStatement(
+        "^CREATE\\s+(UNIQUE\\s+)?INDEX\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QRegularExpression insertSelectStatement(
+        "^INSERT(?:\\s+OR\\s+IGNORE|\\s+IGNORE)?\\s+INTO\\b[\\s\\S]*\\bSELECT\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QRegularExpression commonTableExpressionInsertSelectStatement(
+        "^WITH(?:\\s+RECURSIVE)?\\b[\\s\\S]*\\bINSERT(?:\\s+OR\\s+IGNORE|\\s+IGNORE)?\\s+INTO\\b[\\s\\S]*\\bSELECT\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QRegularExpression alterSafeStatement(
+        "^ALTER\\s+TABLE\\b[\\s\\S]*\\b(ADD|RENAME)\\b",
+        QRegularExpression::CaseInsensitiveOption);
+
+    bool hasStatement = false;
+
+    for (QString statement : sqlStatements(sql))
+    {
+        statement =
+            stripLeadingSqlComments(statement);
+
+        const QString compact =
+            statement.simplified();
+
+        if (compact.isEmpty())
+            continue;
+
+        if (forbiddenStatement.match(compact).hasMatch()
+            || alterDropStatement.match(compact).hasMatch())
+        {
+            return false;
+        }
+
+        const bool allowed =
+            createTableStatement.match(compact).hasMatch()
+            || createIndexStatement.match(compact).hasMatch()
+            || insertSelectStatement.match(compact).hasMatch()
+            || commonTableExpressionInsertSelectStatement.match(compact).hasMatch()
+            || alterSafeStatement.match(compact).hasMatch();
+
+        if (!allowed)
+            return false;
+
+        hasStatement = true;
+    }
+
+    return hasStatement;
+}
+
+bool DatabaseManager::validateMigrationPreview(
+    const QString& migrationSql)
+{
+    if (!isValidMigrationSql(migrationSql))
+    {
+        m_lastError =
+            "Migration contains unsupported or destructive SQL.";
+        return false;
+    }
+
+    QSqlDatabase db =
+        QSqlDatabase::database(m_dataBaseConnectionName);
+    if (!db.isOpen())
+    {
+        m_lastError = "Database is not open.";
+        return false;
+    }
+
+    const QString incompatibleFeature =
+        incompatibleMigrationFeature(
+            db.driverName(),
+            migrationSql);
+    if (!incompatibleFeature.isEmpty())
+    {
+        m_lastError =
+            "SQL feature '"
+            + incompatibleFeature
+            + "' is incompatible with "
+            + db.driverName()
+            + ".";
+        return false;
+    }
+
+    const bool supportsRollbackValidation =
+        db.driverName() == "QSQLITE"
+        || db.driverName().startsWith("QPSQL");
+    if (!supportsRollbackValidation)
+    {
+        m_lastError.clear();
+        return true;
+    }
+
+    if (!db.transaction())
+    {
+        m_lastError =
+            "Could not start migration preview transaction: "
+            + db.lastError().text();
+        return false;
+    }
+
+    for (QString statement : sqlStatements(migrationSql))
+    {
+        statement = stripLeadingSqlComments(statement);
+        if (statement.isEmpty())
+            continue;
+
+        QSqlQuery query(db);
+        if (!query.exec(statement))
+        {
+            m_lastError =
+                "SQL is not executable for "
+                + db.driverName()
+                + ": "
+                + query.lastError().text();
+            db.rollback();
+            return false;
+        }
+    }
+
+    if (db.driverName() == "QSQLITE")
+    {
+        QSqlQuery foreignKeyCheck(
+            "PRAGMA foreign_key_check",
+            db);
+        if (foreignKeyCheck.next())
+        {
+            m_lastError =
+                "Foreign key validation failed in the migration preview.";
+            db.rollback();
+            return false;
+        }
+    }
+
+    if (!db.rollback())
+    {
+        m_lastError =
+            "Could not roll back migration preview: "
+            + db.lastError().text();
+        return false;
+    }
+
+    m_lastError.clear();
+    return true;
+}
+
+bool DatabaseManager::executeMigration(
+    const QString& migrationSql)
+{
+    if (!isValidMigrationSql(migrationSql))
+    {
+        m_lastError =
+            "Migration contains unsupported or destructive SQL.";
+        return false;
+    }
+
+    QSqlDatabase db =
+        QSqlDatabase::database(
+            m_dataBaseConnectionName);
+
+    if (!db.isOpen())
+    {
+        m_lastError = "Database is not open.";
+        return false;
+    }
+
+    if (!db.transaction())
+    {
+        m_lastError =
+            "Could not start database transaction: "
+            + db.lastError().text();
+        return false;
+    }
+
+    for (QString statement : sqlStatements(migrationSql))
+    {
+        statement =
+            stripLeadingSqlComments(statement);
+
+        if (statement.isEmpty())
+            continue;
+
+        QSqlQuery query(db);
+
+        if (!query.exec(statement))
+        {
+            m_lastError =
+                query.lastError().text();
+            db.rollback();
+            return false;
+        }
+    }
+
+    if (db.driverName() == "QSQLITE")
+    {
+        QSqlQuery foreignKeyCheck(
+            "PRAGMA foreign_key_check",
+            db);
+
+        if (foreignKeyCheck.next())
+        {
+            m_lastError =
+                "Foreign key validation failed after migration.";
+            db.rollback();
+            return false;
+        }
+    }
+
+    if (!db.commit())
+    {
+        m_lastError =
+            "Could not commit database migration: "
+            + db.lastError().text();
+        db.rollback();
+        return false;
+    }
+
+    m_lastError.clear();
+    return true;
 }
 
 QString DatabaseManager::lastError() const

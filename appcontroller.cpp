@@ -32,6 +32,65 @@ QString databaseDialectName(const QString& driverName)
 
     return "the connected database";
 }
+
+QString normalizationDialectRules(const QString& driverName)
+{
+    if (driverName == "QSQLITE")
+    {
+        return
+            "SQLite rules: use instr(value, delimiter), substr(), || for string concatenation, "
+            "and WITH RECURSIVE when rows must be split. Never use CHARINDEX, STRING_SPLIT, "
+            "SPLIT_PART, TOP, AUTO_INCREMENT or IDENTITY. ";
+    }
+
+    if (driverName.startsWith("QMYSQL"))
+    {
+        return
+            "MySQL/MariaDB rules: use INSTR(), SUBSTRING(), CONCAT() and supported recursive CTE syntax. "
+            "Never use CHARINDEX, STRING_SPLIT, SPLIT_PART, TOP or IDENTITY. ";
+    }
+
+    if (driverName.startsWith("QPSQL"))
+    {
+        return
+            "PostgreSQL rules: use POSITION(delimiter IN value) or STRPOS(), SUBSTRING(), ||, "
+            "and PostgreSQL recursive CTE syntax. Never use INSTR, IFNULL, CHARINDEX, "
+            "STRING_SPLIT, backtick identifiers, AUTO_INCREMENT or IDENTITY. ";
+    }
+
+    if (driverName.startsWith("QODBC"))
+    {
+        return
+            "Microsoft SQL Server rules: use CHARINDEX(), SUBSTRING(), + for string concatenation, "
+            "and SQL Server CTE syntax. Never use INSTR, SUBSTR, STRPOS, SPLIT_PART, LIMIT, "
+            "backtick identifiers, || or AUTO_INCREMENT. ";
+    }
+
+    return {};
+}
+
+QString normalizationGoal(const QString& form)
+{
+    if (form == "1NF")
+        return "Make every value atomic and remove repeating groups.";
+
+    if (form == "2NF")
+        return "Satisfy 1NF and remove partial dependencies on composite keys.";
+
+    if (form == "3NF")
+        return "Satisfy 2NF and remove transitive dependencies.";
+
+    if (form == "BCNF")
+        return "Ensure every determinant is a candidate key.";
+
+    if (form == "4NF")
+        return "Satisfy BCNF and remove independent multivalued dependencies.";
+
+    if (form == "5NF")
+        return "Satisfy 4NF and remove non-key join dependencies while preserving lossless joins.";
+
+    return {};
+}
 }
 
 AppController::AppController(QObject *parent)
@@ -49,6 +108,8 @@ AppController::AppController(QObject *parent)
             "ai/ollamaEndpoint",
             OllamaEnvironment::defaultEndpoint()
             ).toString();
+    m_normalizationStatus =
+        "No normalization has been applied.";
 
     m_ollamaClient->setBaseUrl(QUrl(m_ollamaEndpoint));
    // emit dalOutputPathChanged(m_classPath);
@@ -98,6 +159,21 @@ AppController::AppController(QObject *parent)
             emit selectedModelChanged();
             emit modelsFetched(m_availableModels);
             emit availableModelsChanged();
+
+            if (m_loading)
+            {
+                m_loading = false;
+                emit loadingChanged();
+            }
+
+            if (!m_selectedNormalizationForm.isEmpty())
+            {
+                m_normalizationReady = false;
+                m_normalizationStatus =
+                    "Normalization request failed: "
+                    + errorMessage;
+                emit normalizationChanged();
+            }
         });
 
     // SqlReceived
@@ -178,7 +254,17 @@ AppController::AppController(QObject *parent)
         this,
         [this](const QString& code)
         {
-            emit dalOutputChanged(code);
+            QStringList tableNames =
+                activeNormalizationTables();
+            if (tableNames.isEmpty())
+                tableNames =
+                    m_dataBaseManager->getTableNames();
+            const QString normalizedCode =
+                DalFileExporter::applySqlNamingConvention(
+                    code,
+                    tableNames);
+
+            emit dalOutputChanged(normalizedCode);
             QSettings settings("DataBaseSettings", "Proteus");
             m_dalOutputPath = settings.value("dal/outputPath").toString();
             emit dalOutputPathChanged();
@@ -186,6 +272,15 @@ AppController::AppController(QObject *parent)
             emit executableChanged();
             m_loading = false;
             emit loadingChanged();
+        });
+
+    connect(
+        m_ollamaClient,
+        &OllamaClient::normalizationReceived,
+        this,
+        [this](const QString& sql)
+        {
+            handleNormalizationResponse(sql);
         });
 
     refreshAiEnvironment();
@@ -298,6 +393,375 @@ void AppController::updateAiEnvironmentStatus()
     emit aiEnvironmentChanged();
 }
 
+void AppController::handleNormalizationResponse(
+    const QString& sql)
+{
+    m_normalizationOutput = sql.trimmed();
+    const bool noChangesRequired =
+        m_normalizationOutput.compare(
+            "NO_CHANGES_REQUIRED",
+            Qt::CaseInsensitive) == 0;
+    m_normalizationReady =
+        !noChangesRequired
+        && m_dataBaseManager->validateMigrationPreview(
+            m_normalizationOutput);
+
+    if (noChangesRequired)
+    {
+        if (m_dataBaseManager->hasNormalizationEvidence(
+                sourceNormalizationTables()))
+        {
+            if (m_normalizationRepairAttempts == 0
+                && m_aiEnvironmentReady)
+            {
+                ++m_normalizationRepairAttempts;
+                m_normalizationStatus =
+                    "The AI returned NO_CHANGES_REQUIRED, but the schema still contains normalization evidence. Asking the AI to generate a real migration...";
+                emit normalizationChanged();
+
+                const QString repairPrompt =
+                    m_normalizationPrompt
+                    + "\n\nYour previous answer was NO_CHANGES_REQUIRED, but the local analyzer found normalization evidence. "
+                      "This includes denormalized table names, numbered repeating column groups such as produkt_1_name/produkt_2_name, or aligned list values. "
+                      "Generate a real, lossless migration for "
+                    + m_selectedNormalizationForm
+                    + ". Do not return NO_CHANGES_REQUIRED unless no repeating groups, no transitive dependencies and no denormalized naming evidence remain. "
+                      "Preserve all existing data and keep the SQL dialect rules from the original request.";
+
+                m_ollamaClient->generate(
+                    m_selectedModel,
+                    repairPrompt,
+                    OllamaClient::GenerateType::Normalization);
+                return;
+            }
+
+            m_normalizationReady = false;
+            m_normalizationAfterSchema =
+                m_appliedNormalizationForm.isEmpty()
+                    ? QVariantList{}
+                    : m_dataBaseManager->buildSchemaDiagramForTables(
+                          activeNormalizationTables());
+            m_normalizationStatus =
+                "NO_CHANGES_REQUIRED was rejected because the schema still contains normalization evidence.";
+            m_loading = false;
+            emit loadingChanged();
+            emit normalizationChanged();
+            return;
+        }
+
+        m_normalizationReady = true;
+        m_normalizationAfterSchema =
+            m_normalizationBeforeSchema;
+        m_normalizationStatus =
+            "The active schema already satisfies "
+            + m_selectedNormalizationForm
+            + ". Apply Normalization to register this version without executing SQL.";
+    }
+    else if (m_normalizationReady)
+    {
+        m_normalizationAfterSchema =
+            m_dataBaseManager->buildSchemaDiagramWithMigration(
+                m_normalizationOutput);
+        m_normalizationStatus =
+            m_selectedNormalizationForm
+            + " preview is ready. The database remains unchanged until Apply Normalization.";
+    }
+    else
+    {
+        const QString validationError =
+            m_dataBaseManager->lastError();
+
+        if (m_normalizationRepairAttempts == 0
+            && m_aiEnvironmentReady)
+        {
+            ++m_normalizationRepairAttempts;
+            m_normalizationStatus =
+                "The first migration did not match the selected SQL dialect. Asking the AI to correct it...";
+            emit normalizationChanged();
+
+            const QString repairPrompt =
+                m_normalizationPrompt
+                + "\n\nThe previous migration failed validation for the connected database. "
+                  "Correct the SQL without changing the requested normal form or losing data. "
+                  "Validation error: "
+                + validationError
+                + "\nPrevious migration:\n"
+                + m_normalizationOutput;
+            m_ollamaClient->generate(
+                m_selectedModel,
+                repairPrompt,
+                OllamaClient::GenerateType::Normalization);
+            return;
+        }
+
+        m_normalizationAfterSchema =
+            m_appliedNormalizationForm.isEmpty()
+                ? QVariantList{}
+                : m_dataBaseManager->buildSchemaDiagramForTables(
+                      activeNormalizationTables());
+        m_normalizationStatus =
+            "The generated migration was rejected: "
+            + validationError;
+    }
+
+    m_loading = false;
+    emit loadingChanged();
+    emit normalizationChanged();
+}
+
+int AppController::normalizationVersionIndex(
+    const QString& form) const
+{
+    for (int i = 0; i < m_normalizationHistory.size(); ++i)
+    {
+        if (m_normalizationHistory.at(i).form.compare(
+                form,
+                Qt::CaseInsensitive) == 0)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+QStringList AppController::activeNormalizationTables() const
+{
+    if (m_activeNormalizationVersion < 0
+        || m_activeNormalizationVersion >= m_normalizationHistory.size())
+    {
+        return {};
+    }
+
+    return m_normalizationHistory.at(
+        m_activeNormalizationVersion).tableNames;
+}
+
+QStringList AppController::sourceNormalizationTables() const
+{
+    if (!m_normalizationHistory.isEmpty())
+        return m_normalizationHistory.first().tableNames;
+
+    return m_dataBaseManager->getTableNames();
+}
+
+void AppController::saveNormalizationState()
+{
+    QVariantList storedVersions;
+    for (const NormalizationVersion& version : m_normalizationHistory)
+    {
+        storedVersions.append(QVariantMap{
+            {"form", version.form},
+            {"migrationSql", version.migrationSql},
+            {"tableNames", version.tableNames}
+        });
+    }
+
+    QSettings settings("DataBaseSettings", "Proteus");
+    settings.setValue("database/normalizationIdentity", m_databaseIdentity);
+    settings.setValue("database/normalizationHistory", storedVersions);
+    settings.setValue(
+        "database/activeNormalizationVersion",
+        m_activeNormalizationVersion);
+    settings.setValue(
+        "database/appliedNormalizationForm",
+        m_appliedNormalizationForm);
+    settings.setValue(
+        "database/lastNormalizationMigration",
+        m_lastAppliedNormalizationSql);
+}
+
+void AppController::prepareNormalizationVersion(
+    int versionIndex,
+    const QString& actionName)
+{
+    if (versionIndex < 0
+        || versionIndex >= m_normalizationHistory.size())
+    {
+        m_normalizationStatus =
+            "The requested normalization version is not available.";
+        emit normalizationChanged();
+        return;
+    }
+
+    const NormalizationVersion& version =
+        m_normalizationHistory.at(versionIndex);
+    m_pendingNormalizationVersion = versionIndex;
+    m_selectedNormalizationForm = version.form;
+    m_normalizationOutput =
+        version.form.isEmpty()
+            ? "Reactivate the original schema version. No SQL execution is required."
+            : "Reactivate the existing " + version.form
+                  + " schema version. No SQL execution is required.";
+    m_normalizationBeforeSchema =
+        m_dataBaseManager->buildSchemaDiagramForTables(
+            sourceNormalizationTables());
+    if (m_normalizationBeforeSchema.isEmpty())
+        m_normalizationBeforeSchema =
+            m_dataBaseManager->buildSchemaDiagram();
+    m_normalizationAfterSchema =
+        m_dataBaseManager->buildSchemaDiagramForTables(
+            version.tableNames);
+    m_normalizationReady = true;
+    m_loading = false;
+    m_normalizationStatus =
+        actionName
+        + " preview is ready. Apply Normalization activates this version without deleting data.";
+    emit loadingChanged();
+    emit normalizationChanged();
+}
+
+void AppController::clearNormalizationPreview(
+    const QString& status)
+{
+    m_pendingNormalizationVersion = -1;
+    m_selectedNormalizationForm.clear();
+    m_normalizationOutput.clear();
+    m_normalizationReady = false;
+    m_loading = false;
+    m_normalizationBeforeSchema =
+        m_dataBaseManager->buildSchemaDiagramForTables(
+            sourceNormalizationTables());
+    if (m_normalizationBeforeSchema.isEmpty())
+        m_normalizationBeforeSchema =
+            m_dataBaseManager->buildSchemaDiagram();
+
+    if (m_appliedNormalizationForm.isEmpty())
+    {
+        m_normalizationAfterSchema.clear();
+    }
+    else
+    {
+        m_normalizationAfterSchema =
+            m_dataBaseManager->buildSchemaDiagramForTables(
+                activeNormalizationTables());
+    }
+
+    m_normalizationStatus = status;
+    emit loadingChanged();
+    emit normalizationChanged();
+}
+
+void AppController::loadNormalizationState(
+    const QString& databaseIdentity)
+{
+    m_databaseIdentity = databaseIdentity;
+    QSettings settings("DataBaseSettings", "Proteus");
+    const QString savedIdentity =
+        settings.value(
+            "database/normalizationIdentity",
+            "").toString();
+    m_normalizationHistory.clear();
+
+    if (savedIdentity == m_databaseIdentity)
+    {
+        const QVariantList storedVersions =
+            settings.value(
+                "database/normalizationHistory")
+                .toList();
+        for (const QVariant& storedValue : storedVersions)
+        {
+            const QVariantMap stored = storedValue.toMap();
+            NormalizationVersion version;
+            version.form = stored.value("form").toString();
+            version.migrationSql =
+                stored.value("migrationSql").toString();
+            version.tableNames =
+                stored.value("tableNames").toStringList();
+            if (!version.tableNames.isEmpty())
+                m_normalizationHistory.append(version);
+        }
+
+        m_activeNormalizationVersion =
+            settings.value(
+                "database/activeNormalizationVersion",
+                0).toInt();
+
+        if (m_normalizationHistory.isEmpty())
+        {
+            const QString legacyForm =
+                settings.value(
+                    "database/appliedNormalizationForm")
+                    .toString();
+            const QString legacyMigration =
+                settings.value(
+                    "database/lastNormalizationMigration")
+                    .toString();
+
+            if (!legacyForm.isEmpty()
+                && !legacyMigration.isEmpty())
+            {
+                QStringList originalTables =
+                    m_dataBaseManager->getTableNames();
+                const QStringList targetTables =
+                    m_dataBaseManager->migrationTargetTableNames(
+                        legacyMigration);
+                for (int i = originalTables.size() - 1; i >= 0; --i)
+                {
+                    if (targetTables.contains(
+                            originalTables.at(i),
+                            Qt::CaseInsensitive))
+                    {
+                        originalTables.removeAt(i);
+                    }
+                }
+
+                m_normalizationHistory.append({
+                    {}, {}, originalTables
+                });
+                m_normalizationHistory.append({
+                    legacyForm,
+                    legacyMigration,
+                    targetTables
+                });
+                m_activeNormalizationVersion = 1;
+            }
+        }
+    }
+
+    if (m_normalizationHistory.isEmpty())
+    {
+        m_normalizationHistory.append({
+            {}, {}, m_dataBaseManager->getTableNames()
+        });
+        m_activeNormalizationVersion = 0;
+    }
+
+    m_activeNormalizationVersion =
+        qBound(
+            0,
+            m_activeNormalizationVersion,
+            m_normalizationHistory.size() - 1);
+    const NormalizationVersion& activeVersion =
+        m_normalizationHistory.at(m_activeNormalizationVersion);
+    m_appliedNormalizationForm = activeVersion.form;
+    m_lastAppliedNormalizationSql = activeVersion.migrationSql;
+
+    m_selectedNormalizationForm.clear();
+    m_normalizationOutput.clear();
+    m_normalizationReady = false;
+    m_pendingNormalizationVersion = -1;
+    m_normalizationBeforeSchema =
+        m_dataBaseManager->buildSchemaDiagramForTables(
+            sourceNormalizationTables());
+    if (m_normalizationBeforeSchema.isEmpty())
+        m_normalizationBeforeSchema =
+            m_dataBaseManager->buildSchemaDiagram();
+    m_normalizationAfterSchema =
+        m_appliedNormalizationForm.isEmpty()
+            ? QVariantList{}
+            : m_dataBaseManager->buildSchemaDiagramForTables(
+                  activeVersion.tableNames);
+    m_normalizationStatus =
+        m_appliedNormalizationForm.isEmpty()
+            ? "No normalization has been applied."
+            : "Applied normalization: "
+                  + m_appliedNormalizationForm;
+
+    saveNormalizationState();
+    emit normalizationChanged();
+}
+
 void AppController::connectDatabase(const QString& databasePath)
 {
     QFileInfo fileInfo(databasePath);
@@ -322,6 +786,8 @@ void AppController::connectDatabase(const QString& databasePath)
 
     if (m_databaseConnected)
     {
+        loadNormalizationState(
+            QFileInfo(filePath).absoluteFilePath());
         emit databaseStatusChanged("Connected");
     }
     else
@@ -369,6 +835,15 @@ void AppController::connectOnlineDatabase(
 
     if (m_databaseConnected)
     {
+        loadNormalizationState(
+            driver
+            + "|"
+            + hostName.trimmed()
+            + "|"
+            + port.trimmed()
+            + "|"
+            + databaseName.trimmed());
+
         QSettings settings("DataBaseSettings", "Proteus");
         settings.setValue("database/isLocalConnection", false);
         settings.setValue("database/onlineDriver", driverName);
@@ -388,6 +863,356 @@ void AppController::connectOnlineDatabase(
     }
 
     emit databaseConnectedChanged(m_databaseConnected);
+}
+
+void AppController::onGenerateNormalization(
+    const QString& form)
+{
+    if (!normalizationForms().contains(form))
+    {
+        m_normalizationStatus =
+            "Unknown normalization form.";
+        emit normalizationChanged();
+        return;
+    }
+
+    if (!m_dataBaseManager->isConnected())
+    {
+        m_normalizationStatus =
+            "Connect a database before normalization.";
+        emit normalizationChanged();
+        return;
+    }
+
+    const int existingVersion =
+        normalizationVersionIndex(form);
+    if (existingVersion >= 0)
+    {
+        if (existingVersion == m_activeNormalizationVersion)
+        {
+            m_selectedNormalizationForm = form;
+            m_normalizationReady = false;
+            m_pendingNormalizationVersion = -1;
+            m_normalizationOutput.clear();
+            m_normalizationBeforeSchema =
+                m_dataBaseManager->buildSchemaDiagramForTables(
+                    sourceNormalizationTables());
+            m_normalizationAfterSchema =
+                m_dataBaseManager->buildSchemaDiagramForTables(
+                    activeNormalizationTables());
+            m_normalizationStatus =
+                form + " is already the active normalization version.";
+            emit normalizationChanged();
+            return;
+        }
+
+        prepareNormalizationVersion(
+            existingVersion,
+            "Version switch");
+        return;
+    }
+
+    m_selectedNormalizationForm = form;
+    m_normalizationOutput.clear();
+    m_normalizationPrompt.clear();
+    m_normalizationRepairAttempts = 0;
+    m_normalizationReady = false;
+    m_pendingNormalizationVersion = -1;
+    m_normalizationBeforeSchema =
+        m_dataBaseManager->buildSchemaDiagramForTables(
+            sourceNormalizationTables());
+    if (m_normalizationBeforeSchema.isEmpty())
+        m_normalizationBeforeSchema =
+            m_dataBaseManager->buildSchemaDiagram();
+    m_normalizationAfterSchema.clear();
+    m_normalizationStatus =
+        "Generating a lossless "
+        + form
+        + " migration...";
+    m_loading = true;
+    emit loadingChanged();
+    emit normalizationChanged();
+
+    if (!m_aiEnvironmentReady)
+    {
+        m_loading = false;
+        m_normalizationStatus =
+            m_aiSetupInstructions;
+        emit loadingChanged();
+        emit normalizationChanged();
+        return;
+    }
+
+    const QString driver =
+        m_dataBaseManager->databaseDriver();
+    const QString dialect =
+        databaseDialectName(driver);
+
+    QString prompt =
+        "You are a professional database normalization and migration expert. "
+        "Generate a migration for "
+        + dialect
+        + " that transforms the schema toward "
+        + form
+        + ". "
+        + normalizationGoal(form)
+        + " "
+        + normalizationDialectRules(driver)
+        + " The selected target is cumulative: apply every required transformation from 1NF through "
+        + form
+        + ". "
+          "Infer the natural language and naming style independently from each source table and its columns. "
+          "Name generated tables, columns, constraints and indexes in that same language and style. "
+          "Never translate German identifiers to English or English identifiers to German. "
+          "Use the supplied sample rows and delimiter profiles to detect repeating groups and aligned list values. "
+          "A delimiter alone is not proof of a repeating group; compare column meaning and equal token counts across rows. "
+          "When multiple columns contain aligned lists, split them by ordinal into atomic child rows without changing their pairing. "
+          "Infer functional dependencies only when supported by keys, relationships, identifier meaning, repeated values or samples. "
+          "Preserve every original atomic value in the normalized target tables. "
+          "Only normalize the original source schema tables supplied below. Ignore older retained normalized versions that are not listed. "
+          "Existing data must never be deleted, overwritten or truncated. "
+          "Keep every existing source table and every existing row unchanged. "
+          "Create new normalized tables with clear names and copy data using INSERT INTO ... SELECT. "
+          "Use SELECT DISTINCT only when it does not remove semantically different rows. "
+          "Create primary keys, unique constraints, foreign keys and indexes where justified by the schema. "
+          "Do not claim that normalization is complete when sample rows still contain supported repeating groups. "
+          "Return NO_CHANGES_REQUIRED only when the schema and supplied data evidence already satisfy the selected form. "
+          "NO_CHANGES_REQUIRED is forbidden when the analysis reports denormalized table names, repeated numbered column groups, aligned list values or embedded dependent entities. "
+          "If a dependency is uncertain, preserve the involved values in a lossless child relation instead of discarding or merging them. "
+          "Allowed statements are CREATE TABLE, CREATE INDEX, INSERT INTO ... SELECT, common table expressions used by INSERT INTO ... SELECT, and safe ALTER TABLE ADD or RENAME. "
+          "Never output DROP, DELETE, TRUNCATE, UPDATE, REPLACE, ATTACH, DETACH or VACUUM. "
+          "Do not output BEGIN, COMMIT or ROLLBACK because the application manages the transaction. "
+          "Return raw executable SQL only, without markdown, code fences, comments or explanations.\n\n";
+
+    prompt +=
+        m_dataBaseManager->buildNormalizationAnalysis(
+            sourceNormalizationTables());
+
+    m_normalizationPrompt = prompt;
+
+    m_ollamaClient->generate(
+        m_selectedModel,
+        m_normalizationPrompt,
+        OllamaClient::GenerateType::Normalization);
+}
+
+QString AppController::onApplyNormalization()
+{
+    if (m_pendingNormalizationVersion >= 0)
+    {
+        m_activeNormalizationVersion =
+            m_pendingNormalizationVersion;
+        m_pendingNormalizationVersion = -1;
+
+        const NormalizationVersion& activeVersion =
+            m_normalizationHistory.at(
+                m_activeNormalizationVersion);
+        m_appliedNormalizationForm = activeVersion.form;
+        m_lastAppliedNormalizationSql =
+            activeVersion.migrationSql;
+        m_normalizationReady = false;
+        m_selectedNormalizationForm = activeVersion.form;
+        m_normalizationOutput.clear();
+        m_normalizationBeforeSchema =
+            m_dataBaseManager->buildSchemaDiagramForTables(
+                sourceNormalizationTables());
+        m_normalizationAfterSchema =
+            activeVersion.form.isEmpty()
+                ? QVariantList{}
+                : m_dataBaseManager->buildSchemaDiagramForTables(
+                      activeVersion.tableNames);
+        m_normalizationStatus =
+            activeVersion.form.isEmpty()
+                ? "Original schema version reactivated. No data was deleted."
+                : activeVersion.form
+                      + " schema version reactivated. No data was deleted.";
+        saveNormalizationState();
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    if (m_normalizationOutput.compare(
+            "NO_CHANGES_REQUIRED",
+            Qt::CaseInsensitive) == 0)
+    {
+        const NormalizationVersion currentVersion =
+            m_normalizationHistory.at(
+                m_activeNormalizationVersion);
+        m_normalizationHistory.append({
+            m_selectedNormalizationForm,
+            currentVersion.migrationSql,
+            currentVersion.tableNames
+        });
+        m_activeNormalizationVersion =
+            m_normalizationHistory.size() - 1;
+        m_appliedNormalizationForm = m_selectedNormalizationForm;
+        m_lastAppliedNormalizationSql =
+            currentVersion.migrationSql;
+        m_normalizationReady = false;
+        m_normalizationBeforeSchema =
+            m_dataBaseManager->buildSchemaDiagramForTables(
+                sourceNormalizationTables());
+        m_normalizationAfterSchema =
+            m_dataBaseManager->buildSchemaDiagramForTables(
+                currentVersion.tableNames);
+        m_normalizationStatus =
+            "Schema version registered as "
+            + m_appliedNormalizationForm
+            + ". No SQL execution was required.";
+        saveNormalizationState();
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    if (!m_normalizationReady)
+    {
+        m_normalizationStatus =
+            "No validated migration is ready to apply.";
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    if (!m_dataBaseManager->executeMigration(
+            m_normalizationOutput))
+    {
+        m_normalizationStatus =
+            "Migration rolled back: "
+            + m_dataBaseManager->lastError();
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    m_appliedNormalizationForm =
+        m_selectedNormalizationForm;
+    m_lastAppliedNormalizationSql =
+        m_normalizationOutput;
+    QStringList targetTables =
+        m_dataBaseManager->migrationTargetTableNames(
+            m_lastAppliedNormalizationSql);
+    if (targetTables.isEmpty())
+        targetTables = activeNormalizationTables();
+    m_normalizationHistory.append({
+        m_appliedNormalizationForm,
+        m_lastAppliedNormalizationSql,
+        targetTables
+    });
+    m_activeNormalizationVersion =
+        m_normalizationHistory.size() - 1;
+    m_pendingNormalizationVersion = -1;
+    m_normalizationReady = false;
+    m_normalizationBeforeSchema =
+        m_dataBaseManager->buildSchemaDiagramForTables(
+            sourceNormalizationTables());
+    m_normalizationAfterSchema =
+        m_dataBaseManager->buildSchemaDiagramWithMigration(
+            m_lastAppliedNormalizationSql);
+    m_normalizationStatus =
+        m_appliedNormalizationForm
+        + " applied successfully. Existing source data was retained.";
+
+    saveNormalizationState();
+    emit normalizationChanged();
+    return m_normalizationStatus;
+}
+
+QString AppController::onResetNormalization()
+{
+    if (m_loading)
+    {
+        m_normalizationStatus =
+            "Wait until the current normalization request is finished.";
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    if (!m_normalizationReady
+        && m_pendingNormalizationVersion < 0
+        && !m_selectedNormalizationForm.isEmpty()
+        && m_activeNormalizationVersion >= 0)
+    {
+        clearNormalizationPreview(
+            m_appliedNormalizationForm.isEmpty()
+                ? "Normalization selection cleared. Original schema is active."
+                : "Normalization selection cleared. Active version remains "
+                      + m_appliedNormalizationForm
+                      + ".");
+        return m_normalizationStatus;
+    }
+
+    if (m_pendingNormalizationVersion >= 0)
+    {
+        if (m_pendingNormalizationVersion == m_activeNormalizationVersion)
+        {
+            clearNormalizationPreview(
+                "Version switch canceled. Active normalization was not changed.");
+            return m_normalizationStatus;
+        }
+
+        if (m_pendingNormalizationVersion > 0)
+        {
+            prepareNormalizationVersion(
+                m_pendingNormalizationVersion - 1,
+                "Reset");
+            return m_normalizationStatus;
+        }
+
+        m_normalizationStatus =
+            "Original schema is already the earliest available version.";
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    if (m_normalizationReady
+        && m_pendingNormalizationVersion < 0)
+    {
+        clearNormalizationPreview(
+            "Normalization preview cleared. No database changes were applied.");
+        return m_normalizationStatus;
+    }
+
+    if (m_activeNormalizationVersion <= 0)
+    {
+        m_normalizationStatus =
+            "No earlier normalization version is available.";
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    prepareNormalizationVersion(
+        m_activeNormalizationVersion - 1,
+        "Reset");
+    return m_normalizationStatus;
+}
+
+QString AppController::onAdvanceNormalization()
+{
+    if (m_loading)
+    {
+        m_normalizationStatus =
+            "Wait until the current normalization request is finished.";
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    const int baseVersion =
+        m_pendingNormalizationVersion >= 0
+            ? m_pendingNormalizationVersion
+            : m_activeNormalizationVersion;
+    const int nextVersion =
+        baseVersion + 1;
+
+    if (nextVersion >= m_normalizationHistory.size())
+    {
+        m_normalizationStatus =
+            "No later normalization version is available yet. Select the next normal form to generate it.";
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    prepareNormalizationVersion(
+        nextVersion,
+        "Next version");
+    return m_normalizationStatus;
 }
 
 QStringList AppController::codeLanguages() const
@@ -411,6 +1236,18 @@ QStringList AppController::databaseDriverNames() const
         "MySQL / MariaDB",
         "PostgreSQL",
         "SQL Server / ODBC"
+    };
+}
+
+QStringList AppController::normalizationForms() const
+{
+    return {
+        "1NF",
+        "2NF",
+        "3NF",
+        "BCNF",
+        "4NF",
+        "5NF"
     };
 }
 
@@ -443,6 +1280,62 @@ bool AppController::ollamaRunning() const
 bool AppController::aiEnvironmentReady() const
 {
     return m_aiEnvironmentReady;
+}
+
+QString AppController::normalizationOutput() const
+{
+    return m_normalizationOutput;
+}
+
+QString AppController::normalizationStatus() const
+{
+    return m_normalizationStatus;
+}
+
+QString AppController::selectedNormalizationForm() const
+{
+    return m_selectedNormalizationForm;
+}
+
+QString AppController::appliedNormalizationForm() const
+{
+    return m_appliedNormalizationForm;
+}
+
+bool AppController::normalizationReady() const
+{
+    return m_normalizationReady;
+}
+
+bool AppController::canResetNormalization() const
+{
+    return !m_loading
+           && (m_pendingNormalizationVersion >= 0
+               || m_normalizationReady
+               || !m_selectedNormalizationForm.isEmpty()
+               || m_activeNormalizationVersion > 0);
+}
+
+bool AppController::canAdvanceNormalization() const
+{
+    const int baseVersion =
+        m_pendingNormalizationVersion >= 0
+            ? m_pendingNormalizationVersion
+            : m_activeNormalizationVersion;
+
+    return !m_loading
+           && baseVersion >= 0
+           && baseVersion + 1 < m_normalizationHistory.size();
+}
+
+QVariantList AppController::normalizationBeforeSchema() const
+{
+    return m_normalizationBeforeSchema;
+}
+
+QVariantList AppController::normalizationAfterSchema() const
+{
+    return m_normalizationAfterSchema;
 }
 
 void AppController::setSelectedLanguage(int index)
@@ -810,11 +1703,36 @@ void AppController::onGenerateDalCode(bool secureAccess)
 
     dalPrompt +=
         "Use real table names and real column names exactly as provided. "
+        "Use the mandatory naming convention Sql<TableName> for every generated DAL class and file. "
+        "For table User generate class SqlUser and files SqlUser.h and SqlUser.cpp. "
+        "For table UserList generate SqlUserList. "
+        "Never append Repository, DAO, DAL, Service or Manager to generated names. "
+        "Keep the original table name unchanged inside SQL statements. "
         "Never use placeholder names like ExampleRepository. "
         "Never output placeholder tags like <header code> or <source code>. "
         "Use prepared statements or parameter binding for all values. "
         "Never concatenate user input into SQL strings. "
         "Generate classes with create, read, update and delete methods. ";
+
+    if (!m_appliedNormalizationForm.isEmpty())
+    {
+        dalPrompt +=
+            "The database has been normalized toward "
+            + m_appliedNormalizationForm
+            + ". Prefer the normalized destination tables created by the applied migration. "
+              "Treat retained source tables as legacy migration sources when equivalent normalized destination tables exist. "
+              "Generate coordinated DAL methods for foreign-key relationships and use explicit JOIN statements for composed reads. "
+              "Use a database transaction when one logical write spans multiple normalized tables. "
+              "Keep all query values parameterized and never concatenate identifiers or values from user input. ";
+
+        if (!m_lastAppliedNormalizationSql.isEmpty())
+        {
+            dalPrompt +=
+                "The applied lossless migration was:\n"
+                + m_lastAppliedNormalizationSql
+                + "\nEnd of applied migration. ";
+        }
+    }
 
     if (m_selectedLanguageType ==
         ProgrammingLanguage::ProgrammingLanguageType::Cplusplus)
@@ -841,12 +1759,13 @@ void AppController::onGenerateDalCode(bool secureAccess)
 
     dalPrompt +=
         "Return files exactly in this format:\n"
-        "FILE: RealTableName.ext\n"
+        "FILE: SqlRealTableName.ext\n"
         "actual code\n\n"
         "No markdown. No explanation. No code fences.\n\n";
 
     dalPrompt +=
-        m_dataBaseManager->buildSchemaDescription();
+        m_dataBaseManager->buildSchemaDescription(
+            activeNormalizationTables());
 
     m_ollamaClient->generate(
         m_selectedModel,

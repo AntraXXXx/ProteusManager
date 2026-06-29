@@ -16,6 +16,10 @@ struct DalExportResult
 class DalFileExporter
 {
 public:
+    static QString applySqlNamingConvention(
+        const QString& response,
+        const QStringList& tableNames);
+
     static DalExportResult exportFiles(
         const QString& response,
         const QString& outputPath);
