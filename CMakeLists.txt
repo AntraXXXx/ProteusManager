@@ -67,6 +67,9 @@ qt_add_qml_module(DataBaseManager
         qml/MainMenuPage.qml
         qml/SqlGeneratorPage.qml
         qml/ProgrammingCodeGeneratorPage.qml
+        qml/NormalizationPage.qml
+        qml/SchemaDiagramView.qml
+        qml/SchemaTableNode.qml
         SOURCES appcontroller.h appcontroller.cpp
 )
 

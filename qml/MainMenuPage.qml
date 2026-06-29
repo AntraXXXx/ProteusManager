@@ -363,7 +363,7 @@ Page {
         GridLayout {
             id: mainActionBar
             Layout.fillWidth: true
-            columns: mainMenuPage.width < 560 ? 1 : mainMenuPage.width < 860 ? 2 : 4
+            columns: mainMenuPage.width < 560 ? 1 : mainMenuPage.width < 860 ? 2 : 5
             columnSpacing: 14
             rowSpacing: 10
 
@@ -425,7 +425,7 @@ Page {
             }
 
             Button {
-                    id: pushButton_CodeGenerator
+                id: pushButton_CodeGenerator
 
                     text: "Code Generator"
                     enabled: databaseConnected && appController.aiEnvironmentReady
@@ -442,6 +442,23 @@ Page {
                         )
                     }
                 }
+
+            Button {
+                id: pushButton_Normalization
+                text: "Normalize"
+                enabled: databaseConnected && appController.aiEnvironmentReady
+                font.pixelSize: 16
+                Layout.fillWidth: true
+                Layout.minimumWidth: 130
+                Layout.preferredHeight: 48
+
+                onClicked: {
+                    appStack.push(
+                        Qt.resolvedUrl("NormalizationPage.qml"),
+                        { appStack: appStack }
+                    )
+                }
+            }
 
             Connections {
                     target: appController

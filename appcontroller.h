@@ -6,6 +6,8 @@
 #include <QFileInfo>
 #include <QSettings>
 #include <QFileDialog>
+#include <QVariantList>
+#include <QVector>
 
 #include <memory>
 
@@ -36,6 +38,15 @@ class AppController : public QObject
     Q_PROPERTY(bool ollamaInstalled READ ollamaInstalled NOTIFY aiEnvironmentChanged)
     Q_PROPERTY(bool ollamaRunning READ ollamaRunning NOTIFY aiEnvironmentChanged)
     Q_PROPERTY(bool aiEnvironmentReady READ aiEnvironmentReady NOTIFY aiEnvironmentChanged)
+    Q_PROPERTY(QString normalizationOutput READ normalizationOutput NOTIFY normalizationChanged)
+    Q_PROPERTY(QString normalizationStatus READ normalizationStatus NOTIFY normalizationChanged)
+    Q_PROPERTY(QString selectedNormalizationForm READ selectedNormalizationForm NOTIFY normalizationChanged)
+    Q_PROPERTY(QString appliedNormalizationForm READ appliedNormalizationForm NOTIFY normalizationChanged)
+    Q_PROPERTY(bool normalizationReady READ normalizationReady NOTIFY normalizationChanged)
+    Q_PROPERTY(bool canResetNormalization READ canResetNormalization NOTIFY normalizationChanged)
+    Q_PROPERTY(bool canAdvanceNormalization READ canAdvanceNormalization NOTIFY normalizationChanged)
+    Q_PROPERTY(QVariantList normalizationBeforeSchema READ normalizationBeforeSchema NOTIFY normalizationChanged)
+    Q_PROPERTY(QVariantList normalizationAfterSchema READ normalizationAfterSchema NOTIFY normalizationChanged)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -55,9 +66,19 @@ public:
     bool ollamaInstalled() const;
     bool ollamaRunning() const;
     bool aiEnvironmentReady() const;
+    QString normalizationOutput() const;
+    QString normalizationStatus() const;
+    QString selectedNormalizationForm() const;
+    QString appliedNormalizationForm() const;
+    bool normalizationReady() const;
+    bool canResetNormalization() const;
+    bool canAdvanceNormalization() const;
+    QVariantList normalizationBeforeSchema() const;
+    QVariantList normalizationAfterSchema() const;
 
     Q_INVOKABLE QStringList codeLanguages() const;
     Q_INVOKABLE QStringList databaseDriverNames() const;
+    Q_INVOKABLE QStringList normalizationForms() const;
     Q_INVOKABLE void setSelectedLanguage(int index);
     Q_INVOKABLE void setSelectedModel(const QString& model);
     Q_INVOKABLE void setOllamaEndpoint(const QString& endpoint);
@@ -79,6 +100,10 @@ public:
         const QString& port,
         const QString& userName,
         const QString& password);
+    Q_INVOKABLE void onGenerateNormalization(const QString& form);
+    Q_INVOKABLE QString onApplyNormalization();
+    Q_INVOKABLE QString onResetNormalization();
+    Q_INVOKABLE QString onAdvanceNormalization();
 
 signals:
     void modelsFetched(const QStringList& models);
@@ -102,9 +127,27 @@ signals:
     void availableModelsChanged();
     void dalStatusChanged(const QString& status);
     void dalExportFinished(const QString& message);
+    void normalizationChanged();
 
 private:
+    struct NormalizationVersion
+    {
+        QString form;
+        QString migrationSql;
+        QStringList tableNames;
+    };
+
     void updateAiEnvironmentStatus();
+    void loadNormalizationState(const QString& databaseIdentity);
+    void saveNormalizationState();
+    void handleNormalizationResponse(const QString& sql);
+    int normalizationVersionIndex(const QString& form) const;
+    QStringList activeNormalizationTables() const;
+    QStringList sourceNormalizationTables() const;
+    void prepareNormalizationVersion(
+        int versionIndex,
+        const QString& actionName);
+    void clearNormalizationPreview(const QString& status);
 
     QString m_classFolderPath;
     QString m_selectedModel;
@@ -115,6 +158,16 @@ private:
     QString m_ollamaEndpoint;
     QString m_aiConnectionStatus;
     QString m_aiSetupInstructions;
+    QString m_normalizationOutput;
+    QString m_normalizationStatus;
+    QString m_normalizationPrompt;
+    QString m_selectedNormalizationForm;
+    QString m_appliedNormalizationForm;
+    QString m_lastAppliedNormalizationSql;
+    QString m_databaseIdentity;
+    QVariantList m_normalizationBeforeSchema;
+    QVariantList m_normalizationAfterSchema;
+    QVector<NormalizationVersion> m_normalizationHistory;
 
     OllamaClient *m_ollamaClient;
     std::unique_ptr<DatabaseManager> m_dataBaseManager;
@@ -128,6 +181,10 @@ private:
     bool m_ollamaInstalled = false;
     bool m_ollamaRunning = false;
     bool m_aiEnvironmentReady = false;
+    bool m_normalizationReady = false;
+    int m_normalizationRepairAttempts = 0;
+    int m_activeNormalizationVersion = 0;
+    int m_pendingNormalizationVersion = -1;
 
     ProgrammingLanguage::ProgrammingLanguageType m_selectedLanguageType = ProgrammingLanguage::ProgrammingLanguageType::Cplusplus;
 };
