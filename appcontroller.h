@@ -7,6 +7,7 @@
 #include <QSettings>
 #include <QFileDialog>
 #include <QVariantList>
+#include <QVariantMap>
 #include <QVector>
 
 #include <memory>
@@ -14,6 +15,7 @@
 #include "client/ollamaenvironment.h"
 #include "client/ollamaclient.h"
 #include "database/databasemanager.h"
+#include "utils/codegenerationprofile.h"
 #include "utils/dalfileexporter.h"
 #include "utils/programminglanguage.h"
 #include "utils/sqloutputrecorder.h"
@@ -47,6 +49,9 @@ class AppController : public QObject
     Q_PROPERTY(bool canAdvanceNormalization READ canAdvanceNormalization NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantList normalizationBeforeSchema READ normalizationBeforeSchema NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantList normalizationAfterSchema READ normalizationAfterSchema NOTIFY normalizationChanged)
+    Q_PROPERTY(QVariantMap codeGenerationOptions READ codeGenerationOptions WRITE setCodeGenerationOptions NOTIFY codeGenerationSettingsChanged)
+    Q_PROPERTY(bool generatedCodeValid READ generatedCodeValid NOTIFY generatedCodeValidationChanged)
+    Q_PROPERTY(QString codeGenerationValidationSummary READ codeGenerationValidationSummary NOTIFY generatedCodeValidationChanged)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -75,6 +80,10 @@ public:
     bool canAdvanceNormalization() const;
     QVariantList normalizationBeforeSchema() const;
     QVariantList normalizationAfterSchema() const;
+    QVariantMap codeGenerationOptions() const;
+    bool generatedCodeValid() const;
+    QString codeGenerationValidationSummary() const;
+    void setCodeGenerationOptions(const QVariantMap& options);
 
     Q_INVOKABLE QStringList codeLanguages() const;
     Q_INVOKABLE QStringList databaseDriverNames() const;
@@ -87,6 +96,8 @@ public:
     Q_INVOKABLE void setIsLocalDatabase(bool isLocal);
     Q_INVOKABLE void onGenerateSqlCode();
     Q_INVOKABLE void onGenerateDalCode(bool secureAccess);
+    Q_INVOKABLE void onGenerateApplicationCode(const QVariantMap& options);
+    Q_INVOKABLE bool validateGeneratedCode(const QString& response);
     Q_INVOKABLE void onExportDalCode(const QString& response, const QString& outputPath);
     Q_INVOKABLE QString onExecuteSqlCode(const QString& response);
     Q_INVOKABLE void setAddAuditFields(bool enabled);
@@ -128,6 +139,8 @@ signals:
     void dalStatusChanged(const QString& status);
     void dalExportFinished(const QString& message);
     void normalizationChanged();
+    void codeGenerationSettingsChanged();
+    void generatedCodeValidationChanged();
 
 private:
     struct NormalizationVersion
@@ -165,8 +178,12 @@ private:
     QString m_appliedNormalizationForm;
     QString m_lastAppliedNormalizationSql;
     QString m_databaseIdentity;
+    QString m_lastCodeGenerationPrompt;
+    QString m_codeGenerationValidationSummary;
     QVariantList m_normalizationBeforeSchema;
     QVariantList m_normalizationAfterSchema;
+    QVariantMap m_codeGenerationOptions;
+    QStringList m_lastCodeGenerationTables;
     QVector<NormalizationVersion> m_normalizationHistory;
 
     OllamaClient *m_ollamaClient;
@@ -182,11 +199,14 @@ private:
     bool m_ollamaRunning = false;
     bool m_aiEnvironmentReady = false;
     bool m_normalizationReady = false;
+    bool m_generatedCodeValid = false;
     int m_normalizationRepairAttempts = 0;
+    int m_codeGenerationRepairAttempts = 0;
     int m_activeNormalizationVersion = 0;
     int m_pendingNormalizationVersion = -1;
 
     ProgrammingLanguage::ProgrammingLanguageType m_selectedLanguageType = ProgrammingLanguage::ProgrammingLanguageType::Cplusplus;
+    ProgrammingLanguage::ProgrammingLanguageType m_generationLanguageType = ProgrammingLanguage::ProgrammingLanguageType::Cplusplus;
 };
 
 #endif

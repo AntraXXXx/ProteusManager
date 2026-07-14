@@ -39,6 +39,9 @@ class FakeAppController : public QObject
     Q_PROPERTY(bool canAdvanceNormalization READ canAdvanceNormalization NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantList normalizationBeforeSchema READ normalizationBeforeSchema NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantList normalizationAfterSchema READ normalizationAfterSchema NOTIFY normalizationChanged)
+    Q_PROPERTY(QVariantMap codeGenerationOptions READ codeGenerationOptions NOTIFY codeGenerationSettingsChanged)
+    Q_PROPERTY(bool generatedCodeValid READ generatedCodeValid NOTIFY generatedCodeValidationChanged)
+    Q_PROPERTY(QString codeGenerationValidationSummary READ codeGenerationValidationSummary NOTIFY generatedCodeValidationChanged)
 
 public:
     QString selectedLanguageName() const { return m_languageName; }
@@ -66,6 +69,9 @@ public:
     bool canAdvanceNormalization() const { return m_canAdvanceNormalization; }
     QVariantList normalizationBeforeSchema() const { return m_normalizationBeforeSchema; }
     QVariantList normalizationAfterSchema() const { return m_normalizationAfterSchema; }
+    QVariantMap codeGenerationOptions() const { return m_codeGenerationOptions; }
+    bool generatedCodeValid() const { return m_generatedCodeValid; }
+    QString codeGenerationValidationSummary() const { return m_codeGenerationValidationSummary; }
 
     Q_INVOKABLE QStringList codeLanguages() const
     {
@@ -208,9 +214,38 @@ public:
 
     Q_INVOKABLE void onGenerateDalCode(bool)
     {
+        m_generatedCodeValid = true;
+        emit generatedCodeValidationChanged();
         emit dalOutputChanged(
             "FILE: CustomerRepository.h\n"
             "class CustomerRepository {};");
+    }
+
+    Q_INVOKABLE void onGenerateApplicationCode(
+        const QVariantMap& options)
+    {
+        m_codeGenerationOptions = options;
+        m_generatedCodeValid = true;
+        m_codeGenerationValidationSummary =
+            "Generated code passed validation.";
+        emit codeGenerationSettingsChanged();
+        emit generatedCodeValidationChanged();
+        emit dalOutputChanged(
+            "FILE: SqlCustomer.py\n"
+            "class SqlCustomer: pass");
+    }
+
+    Q_INVOKABLE bool validateGeneratedCode(
+        const QString& response)
+    {
+        m_generatedCodeValid =
+            response.contains("FILE:");
+        m_codeGenerationValidationSummary =
+            m_generatedCodeValid
+                ? "Generated code passed validation."
+                : "Validation failed.";
+        emit generatedCodeValidationChanged();
+        return m_generatedCodeValid;
     }
 
     Q_INVOKABLE void onExportDalCode(
@@ -258,6 +293,8 @@ signals:
     void dalStatusChanged(const QString& status);
     void dalExportFinished(const QString& message);
     void normalizationChanged();
+    void codeGenerationSettingsChanged();
+    void generatedCodeValidationChanged();
 
 private:
     QString m_languageName = "C++";
@@ -293,6 +330,22 @@ private:
     };
     QVariantList m_normalizationAfterSchema =
         m_normalizationBeforeSchema;
+    QVariantMap m_codeGenerationOptions = {
+        {"architecture", "Layered"},
+        {"dataAccessPattern", "Repository"},
+        {"entity", true},
+        {"dto", true},
+        {"repository", true},
+        {"service", false},
+        {"controller", false},
+        {"domainModel", false},
+        {"interfaces", true},
+        {"asyncOperations", false},
+        {"unitTests", false}
+    };
+    bool m_generatedCodeValid = false;
+    QString m_codeGenerationValidationSummary =
+        "Generate code to run validation.";
 };
 
 namespace
@@ -536,9 +589,23 @@ void QmlWorkflowTest::dalPageDisplaysGeneratedCode()
         findObjectWithProperty(
             page.get(),
             "placeholderText",
-            "Generated database access layer code will appear here...");
+            "Generated application code will appear here...");
 
     QVERIFY(outputArea != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Controller / Presentation")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Secure parameterized queries")
+        != nullptr);
 
     const QString dal =
         "FILE: CustomerRepository.h\n"
