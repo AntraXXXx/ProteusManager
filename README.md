@@ -19,6 +19,8 @@ The goal of the project is to reduce manual effort during database development a
 - SQLite support
 - Database interface generation
 - Database Access Layer (DAL) generation
+- Configurable Entity, DTO, Repository/DAO, Service/BLL, Controller, and Domain Model generation
+- Language-specific secure code validation for C++, C, C#, Python, Go, Rust, F#, PowerShell, and Java
 - Local AI support via Ollama
 - Qt-based desktop application
 - Extendable architecture
@@ -76,6 +78,7 @@ AI model before SQL or DAL generation can run.
 Setup instructions are available in:
 
 - [docs/AI_SETUP.md](docs/AI_SETUP.md)
+- [docs/CODE_GENERATION.md](docs/CODE_GENERATION.md)
 
 ---
 

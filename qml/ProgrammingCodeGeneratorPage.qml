@@ -134,18 +134,124 @@ Page {
                 spacing: 12
 
                 Label {
-                    text: "DAL Settings:"
+                    text: "Code Generation Settings"
                     font.pixelSize: 22
                     font.bold: true
                 }
-                GroupBox {
-                    CheckBox {
-                        id: checkBox_apiaccess
-                        text: "Generate secure DAL"
-                        font.pixelSize: 16
-                        checked: true
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: codeGeneratorPage.width < 760 ? 1 : 2
+                    columnSpacing: 24
+                    rowSpacing: 14
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Label {
+                            text: "Architecture"
+                            font.bold: true
+                        }
+
+                        ComboBox {
+                            id: architectureBox
+                            Layout.fillWidth: true
+                            model: ["Layered", "Clean Architecture", "Hexagonal"]
+                            Component.onCompleted: {
+                                const saved = appController.codeGenerationOptions.architecture
+                                currentIndex = Math.max(0, model.indexOf(saved))
+                            }
+                        }
+
+                        Label {
+                            text: "Data Access Pattern"
+                            font.bold: true
+                            Layout.topMargin: 6
+                        }
+
+                        ComboBox {
+                            id: dataAccessPatternBox
+                            Layout.fillWidth: true
+                            model: ["Repository", "DAO"]
+                            Component.onCompleted: {
+                                const saved = appController.codeGenerationOptions.dataAccessPattern
+                                currentIndex = Math.max(0, model.indexOf(saved))
+                            }
+                        }
+
+                        CheckBox {
+                            text: "Secure parameterized queries"
+                            checked: true
+                            enabled: false
+                        }
+
+                        CheckBox {
+                            id: interfacesCheckBox
+                            text: "Generate interfaces"
+                            checked: appController.codeGenerationOptions.interfaces
+                        }
+
+                        CheckBox {
+                            id: asyncCheckBox
+                            text: "Generate asynchronous operations"
+                            checked: appController.codeGenerationOptions.asyncOperations
+                        }
+
+                        CheckBox {
+                            id: unitTestsCheckBox
+                            text: "Generate unit tests"
+                            checked: appController.codeGenerationOptions.unitTests
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Label {
+                            text: "Layers"
+                            font.bold: true
+                        }
+
+                        CheckBox {
+                            id: entityCheckBox
+                            text: "Entity"
+                            checked: appController.codeGenerationOptions.entity
+                        }
+
+                        CheckBox {
+                            id: dtoCheckBox
+                            text: "DTO"
+                            checked: appController.codeGenerationOptions.dto
+                        }
+
+                        CheckBox {
+                            id: repositoryCheckBox
+                            text: "Repository / DAO"
+                            checked: appController.codeGenerationOptions.repository
+                        }
+
+                        CheckBox {
+                            id: serviceCheckBox
+                            text: "Service / BLL"
+                            checked: appController.codeGenerationOptions.service
+                        }
+
+                        CheckBox {
+                            id: controllerCheckBox
+                            text: "Controller / Presentation"
+                            checked: appController.codeGenerationOptions.controller
+                        }
+
+                        CheckBox {
+                            id: domainModelCheckBox
+                            text: "Domain Model"
+                            checked: appController.codeGenerationOptions.domainModel
+                        }
                     }
                 }
+
             }
         }
 
@@ -165,9 +271,17 @@ Page {
                 spacing: 12
 
                 Label {
-                    text: "Generated DAL"
+                    text: "Generated Code"
                     font.pixelSize: 22
                     font.bold: true
+                }
+
+                Label {
+                    id: codeGenerationStatus
+                    Layout.fillWidth: true
+                    text: appController.codeGenerationValidationSummary
+                    color: appController.generatedCodeValid ? "#067647" : "#475467"
+                    wrapMode: Text.Wrap
                 }
 
                 ScrollView {
@@ -182,8 +296,13 @@ Page {
                             font.family: "Consolas"
                             font.pixelSize: 15
                             wrapMode: TextEdit.WrapAnywhere
-                            placeholderText: "Generated database access layer code will appear here..."
+                            placeholderText: "Generated application code will appear here..."
                             height: parent.height
+                            onTextChanged: {
+                                if (!appController.loading) {
+                                    appController.validateGeneratedCode(text)
+                                }
+                            }
                         }
                     }
 
@@ -195,7 +314,7 @@ Page {
                     }
 
                     function onDalStatusChanged(status) {
-                        plainTextEdit_dal.text = status
+                        codeGenerationStatus.text = status
                     }
                 }
             }
@@ -216,7 +335,7 @@ Page {
 
             Button {
                 id: button_generateDal
-                text: "Generate DAL"
+                text: "Generate Code"
                 font.pixelSize: 16
                 Layout.fillWidth: true
                 Layout.minimumWidth: 140
@@ -226,9 +345,19 @@ Page {
                     plainTextEdit_dal.text =
                             "Generating database access layer..."
 
-                    appController.onGenerateDalCode(
-                        checkBox_apiaccess.checked
-                    )
+                    appController.onGenerateApplicationCode({
+                        "architecture": architectureBox.currentText,
+                        "dataAccessPattern": dataAccessPatternBox.currentText,
+                        "entity": entityCheckBox.checked,
+                        "dto": dtoCheckBox.checked,
+                        "repository": repositoryCheckBox.checked,
+                        "service": serviceCheckBox.checked,
+                        "controller": controllerCheckBox.checked,
+                        "domainModel": domainModelCheckBox.checked,
+                        "interfaces": interfacesCheckBox.checked,
+                        "asyncOperations": asyncCheckBox.checked,
+                        "unitTests": unitTestsCheckBox.checked
+                    })
                    // button_dalBack.enabled = !appController.loading
                     //button_generateDal.enabled = !appController.loading
                 }
@@ -236,13 +365,13 @@ Page {
 
             Button {
                 id: button_executeDal
-                text: "Export DAL"
+                text: "Export Code"
                 font.pixelSize: 16
                 Layout.fillWidth: true
                 Layout.minimumWidth: 140
                 Layout.preferredHeight: 48
                 enabled: !appController.loading
-                         && plainTextEdit_dal.text.indexOf("FILE:") !== -1
+                         && appController.generatedCodeValid
                          && lineEdit_scriptoutputfolder.text.length > 0
                 onClicked: {
                     appController.onExportDalCode(

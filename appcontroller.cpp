@@ -103,6 +103,12 @@ AppController::AppController(QObject *parent)
     m_isLocalDatabase = settings.value("database/isLocalConnection", true).toBool();
     m_dalOutputPath = settings.value("dal/outputPath","").toString();
     m_classFolderPath = settings.value("classes/scripts", "").toString();
+    m_codeGenerationOptions =
+        CodeGenerationOptions::fromVariantMap(
+            settings.value("codeGeneration/options").toMap())
+            .toVariantMap();
+    m_codeGenerationValidationSummary =
+        "Generate code to run structural and security validation.";
     m_ollamaEndpoint =
         settings.value(
             "ai/ollamaEndpoint",
@@ -254,15 +260,61 @@ AppController::AppController(QObject *parent)
         this,
         [this](const QString& code)
         {
-            QStringList tableNames =
-                activeNormalizationTables();
-            if (tableNames.isEmpty())
-                tableNames =
-                    m_dataBaseManager->getTableNames();
             const QString normalizedCode =
                 DalFileExporter::applySqlNamingConvention(
                     code,
-                    tableNames);
+                    m_lastCodeGenerationTables);
+
+            const CodeGenerationOptions options =
+                CodeGenerationOptions::fromVariantMap(
+                    m_codeGenerationOptions);
+            const QStringList validationErrors =
+                CodeGenerationProfile::validateResponse(
+                    normalizedCode,
+                    m_generationLanguageType,
+                    options,
+                    m_lastCodeGenerationTables);
+
+            if (!validationErrors.isEmpty())
+            {
+                m_generatedCodeValid = false;
+                m_codeGenerationValidationSummary =
+                    "Generated code failed validation:\n- "
+                    + validationErrors.join("\n- ");
+                emit generatedCodeValidationChanged();
+
+                if (m_codeGenerationRepairAttempts == 0
+                    && m_aiEnvironmentReady)
+                {
+                    ++m_codeGenerationRepairAttempts;
+                    emit dalStatusChanged(
+                        "Generated code failed validation. Asking the AI to repair the complete file set...");
+
+                    const QString repairPrompt =
+                        m_lastCodeGenerationPrompt
+                        + "\n\nThe previous response failed validation for these reasons:\n- "
+                        + validationErrors.join("\n- ")
+                        + "\nRegenerate the complete file set. Fix every validation error and return all files again.";
+
+                    m_ollamaClient->generate(
+                        m_selectedModel,
+                        repairPrompt,
+                        OllamaClient::GenerateType::Dal);
+                    return;
+                }
+
+                emit dalOutputChanged(normalizedCode);
+                emit dalStatusChanged(
+                    "Generated code was rejected. Review the validation details before trying again.");
+                m_loading = false;
+                emit loadingChanged();
+                return;
+            }
+
+            m_generatedCodeValid = true;
+            m_codeGenerationValidationSummary =
+                "Generated code passed file, layer and parameter-binding validation.";
+            emit generatedCodeValidationChanged();
 
             emit dalOutputChanged(normalizedCode);
             QSettings settings("DataBaseSettings", "Proteus");
@@ -272,6 +324,8 @@ AppController::AppController(QObject *parent)
             emit executableChanged();
             m_loading = false;
             emit loadingChanged();
+            emit dalStatusChanged(
+                "Code generation completed and validation passed.");
         });
 
     connect(
@@ -1338,12 +1392,61 @@ QVariantList AppController::normalizationAfterSchema() const
     return m_normalizationAfterSchema;
 }
 
+QVariantMap AppController::codeGenerationOptions() const
+{
+    return m_codeGenerationOptions;
+}
+
+bool AppController::generatedCodeValid() const
+{
+    return m_generatedCodeValid;
+}
+
+QString AppController::codeGenerationValidationSummary() const
+{
+    return m_codeGenerationValidationSummary;
+}
+
+void AppController::setCodeGenerationOptions(
+    const QVariantMap& options)
+{
+    const QVariantMap normalizedOptions =
+        CodeGenerationOptions::fromVariantMap(options)
+            .toVariantMap();
+
+    if (m_codeGenerationOptions == normalizedOptions)
+        return;
+
+    m_codeGenerationOptions = normalizedOptions;
+
+    QSettings settings("DataBaseSettings", "Proteus");
+    settings.setValue(
+        "codeGeneration/options",
+        m_codeGenerationOptions);
+
+    emit codeGenerationSettingsChanged();
+}
+
 void AppController::setSelectedLanguage(int index)
 {
-    m_selectedLanguageType =
+    if (index < 0 || index >= codeLanguages().size())
+        return;
+
+    const auto language =
         static_cast<ProgrammingLanguage::ProgrammingLanguageType>(index);
 
+    if (m_selectedLanguageType == language)
+        return;
+
+    m_selectedLanguageType =
+        language;
+
+    m_generatedCodeValid = false;
+    m_codeGenerationValidationSummary =
+        "Generate code for the selected language to run validation.";
+
     emit languageChanged();
+    emit generatedCodeValidationChanged();
 }
 
 void AppController::setSelectedModel(const QString& model)
@@ -1650,8 +1753,35 @@ void AppController::onGenerateSqlCode()
 
 void AppController::onGenerateDalCode(bool secureAccess)
 {
+    Q_UNUSED(secureAccess);
+
+    onGenerateApplicationCode(
+        m_codeGenerationOptions);
+}
+
+void AppController::onGenerateApplicationCode(
+    const QVariantMap& optionValues)
+{
+    const CodeGenerationOptions options =
+        CodeGenerationOptions::fromVariantMap(
+            optionValues);
+
+    if (options.requestedLayers().isEmpty())
+    {
+        emit dalStatusChanged(
+            "Select at least one code layer before generation.");
+        return;
+    }
+
+    setCodeGenerationOptions(
+        options.toVariantMap());
+
     m_loading = true;
+    m_generatedCodeValid = false;
+    m_codeGenerationValidationSummary =
+        "Waiting for generated code.";
     emit loadingChanged();
+    emit generatedCodeValidationChanged();
 
     if (!m_aiEnvironmentReady)
     {
@@ -1673,46 +1803,60 @@ void AppController::onGenerateDalCode(bool secureAccess)
         return;
     }
 
+    m_lastCodeGenerationTables =
+        activeNormalizationTables();
+    if (m_lastCodeGenerationTables.isEmpty())
+    {
+        m_lastCodeGenerationTables =
+            m_dataBaseManager->getTableNames();
+    }
+
+    if (m_lastCodeGenerationTables.isEmpty())
+    {
+        m_loading = false;
+        emit loadingChanged();
+        emit dalStatusChanged(
+            "The connected database does not contain tables to generate code for.");
+        return;
+    }
+
     const QString databaseDialect =
         databaseDialectName(
             m_dataBaseManager->databaseDriver());
 
-    QString dalPrompt =
-        "You are a professional database access layer generator. ";
+    m_generationLanguageType =
+        m_selectedLanguageType;
+    m_codeGenerationRepairAttempts = 0;
 
-    if (secureAccess)
-    {
-        dalPrompt +=
-            "Generate secure database access classes for the following "
-            + databaseDialect
-            + " schema. ";
-        emit dalStatusChanged(
-            "Generating secure database access layer..."
-            );
-    }
-    else
-    {
-        dalPrompt +=
-            "Generate database access classes for the following "
-            + databaseDialect
-            + " schema. ";
-        emit dalStatusChanged(
-            "Generating database access layer..."
-            );
-    }
+    QString dalPrompt =
+        "You are a professional application architecture and secure database code generator. "
+        "Generate a complete, internally consistent file set for the following "
+        + databaseDialect
+        + " schema. ";
+
+    emit dalStatusChanged(
+        CodeGenerationProfile::generationStatus(
+            m_generationLanguageType,
+            options));
 
     dalPrompt +=
         "Use real table names and real column names exactly as provided. "
-        "Use the mandatory naming convention Sql<TableName> for every generated DAL class and file. "
+        "Use the mandatory naming convention Sql<TableName> only for generated data access implementations. "
         "For table User generate class SqlUser and files SqlUser.h and SqlUser.cpp. "
         "For table UserList generate SqlUserList. "
-        "Never append Repository, DAO, DAL, Service or Manager to generated names. "
+        "Never append Repository, DAO, DAL or Manager to Sql<TableName> implementations. "
         "Keep the original table name unchanged inside SQL statements. "
         "Never use placeholder names like ExampleRepository. "
         "Never output placeholder tags like <header code> or <source code>. "
-        "Use prepared statements or parameter binding for all values. "
-        "Never concatenate user input into SQL strings. "
-        "Generate classes with create, read, update and delete methods. ";
+        "Generate complete imports, constructors, types, error handling and method bodies. "
+        "Do not omit code with comments such as implementation omitted. "
+        "Data access implementations must provide create, read, update and delete operations. ";
+
+    dalPrompt +=
+        CodeGenerationProfile::buildPromptInstructions(
+            m_generationLanguageType,
+            databaseDialect,
+            options);
 
     if (!m_appliedNormalizationForm.isEmpty())
     {
@@ -1734,38 +1878,19 @@ void AppController::onGenerateDalCode(bool secureAccess)
         }
     }
 
-    if (m_selectedLanguageType ==
-        ProgrammingLanguage::ProgrammingLanguageType::Cplusplus)
-    {
-        emit dalStatusChanged("Generating .h and .cpp files...");
-
-        dalPrompt +=
-            "Target language: C++ with Qt. "
-            "Use QSqlDatabase and QSqlQuery. "
-            "Generate one .h file and one .cpp file per database table. ";
-    }
-    else if (m_selectedLanguageType ==
-             ProgrammingLanguage::ProgrammingLanguageType::Csharp)
-    {
-        emit dalStatusChanged("Generating .cs files...");
-
-        dalPrompt +=
-            "Target language: C# with "
-            + databaseDialect
-            + ". "
-            "Generate one .cs file per database table. "
-            "Use parameterized queries. ";
-    }
-
     dalPrompt +=
-        "Return files exactly in this format:\n"
-        "FILE: SqlRealTableName.ext\n"
-        "actual code\n\n"
+        "Generate every requested layer for every listed table. "
+        "Return each file exactly in this format:\n"
+        "FILE: ExactFileName.ext\n"
+        "complete file content\n\n"
         "No markdown. No explanation. No code fences.\n\n";
 
     dalPrompt +=
         m_dataBaseManager->buildSchemaDescription(
-            activeNormalizationTables());
+            m_lastCodeGenerationTables);
+
+    m_lastCodeGenerationPrompt =
+        dalPrompt;
 
     m_ollamaClient->generate(
         m_selectedModel,
@@ -1774,8 +1899,38 @@ void AppController::onGenerateDalCode(bool secureAccess)
         );
 }
 
+bool AppController::validateGeneratedCode(
+    const QString& response)
+{
+    const QStringList validationErrors =
+        CodeGenerationProfile::validateResponse(
+            response,
+            m_generationLanguageType,
+            CodeGenerationOptions::fromVariantMap(
+                m_codeGenerationOptions),
+            m_lastCodeGenerationTables);
+
+    m_generatedCodeValid =
+        validationErrors.isEmpty();
+    m_codeGenerationValidationSummary =
+        m_generatedCodeValid
+            ? "Generated code passed file, layer and parameter-binding validation."
+            : "Validation failed:\n- "
+                  + validationErrors.join("\n- ");
+
+    emit generatedCodeValidationChanged();
+    return m_generatedCodeValid;
+}
+
 void AppController::onExportDalCode(const QString& response, const QString& outputPath)
 {
+    if (!validateGeneratedCode(response))
+    {
+        emit dalExportFinished(
+            "Export blocked because generated code validation failed.");
+        return;
+    }
+
     m_loading = true;
     emit loadingChanged();
 

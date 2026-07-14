@@ -35,6 +35,8 @@ qt_add_executable(DataBaseManager
     utils/textfilemanager.h
     utils/dalfileexporter.cpp
     utils/dalfileexporter.h
+    utils/codegenerationprofile.cpp
+    utils/codegenerationprofile.h
     utils/sqloutputrecorder.cpp
     utils/sqloutputrecorder.h
 
@@ -161,6 +163,8 @@ if(BUILD_TESTING)
     add_proteus_test(DalGenerationTest
         tests/dalgenerationtest.cpp
         utils/dalfileexporter.cpp
+        utils/codegenerationprofile.cpp
+        utils/programminglanguage.cpp
     )
 
     add_proteus_test(SqlOutputRecorderTest
