@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 
+#include "utils/codegenerationprofile.h"
 #include "utils/dalfileexporter.h"
 
 class DalGenerationTest : public QObject
@@ -15,6 +16,12 @@ private slots:
     void exportsGeneratedDalFiles();
     void rejectsUnsafeGeneratedFileNames();
     void reportsMissingOutputPath();
+    void providesProfileForEveryLanguage_data();
+    void providesProfileForEveryLanguage();
+    void acceptsSecureBindingForEveryLanguage_data();
+    void acceptsSecureBindingForEveryLanguage();
+    void validatesCompleteLayeredCode();
+    void rejectsUnsafeOrWrongLanguageCode();
 };
 
 void DalGenerationTest::appliesSqlTableNamingConvention()
@@ -119,6 +126,178 @@ void DalGenerationTest::reportsMissingOutputPath()
 
     QVERIFY(!result.success());
     QCOMPARE(result.message, QString("No output path selected."));
+}
+
+void DalGenerationTest::providesProfileForEveryLanguage_data()
+{
+    QTest::addColumn<int>("languageValue");
+    QTest::addColumn<QString>("extension");
+
+    using Type = ProgrammingLanguage::ProgrammingLanguageType;
+    QTest::newRow("c++") << static_cast<int>(Type::Cplusplus) << "cpp";
+    QTest::newRow("c") << static_cast<int>(Type::C) << "c";
+    QTest::newRow("csharp") << static_cast<int>(Type::Csharp) << "cs";
+    QTest::newRow("python") << static_cast<int>(Type::Python) << "py";
+    QTest::newRow("go") << static_cast<int>(Type::Go) << "go";
+    QTest::newRow("rust") << static_cast<int>(Type::Rust) << "rs";
+    QTest::newRow("fsharp") << static_cast<int>(Type::Fsharp) << "fs";
+    QTest::newRow("powershell") << static_cast<int>(Type::Powershell) << "ps1";
+    QTest::newRow("java") << static_cast<int>(Type::Java) << "java";
+}
+
+void DalGenerationTest::providesProfileForEveryLanguage()
+{
+    QFETCH(int, languageValue);
+    QFETCH(QString, extension);
+
+    const auto language =
+        static_cast<ProgrammingLanguage::ProgrammingLanguageType>(
+            languageValue);
+    CodeGenerationOptions options;
+
+    const QString prompt =
+        CodeGenerationProfile::buildPromptInstructions(
+            language,
+            "PostgreSQL",
+            options);
+
+    QVERIFY(!prompt.isEmpty());
+    QVERIFY(prompt.contains(
+        ProgrammingLanguage::languageTypeToText(language)));
+    QVERIFY(prompt.contains("prepared statements"));
+    QVERIFY(
+        CodeGenerationProfile::allowedExtensions(language)
+            .contains(extension));
+}
+
+void DalGenerationTest::acceptsSecureBindingForEveryLanguage_data()
+{
+    QTest::addColumn<int>("languageValue");
+    QTest::addColumn<QString>("fileName");
+    QTest::addColumn<QString>("code");
+
+    using Type = ProgrammingLanguage::ProgrammingLanguageType;
+    QTest::newRow("c++")
+        << static_cast<int>(Type::Cplusplus)
+        << "SqlUser.cpp"
+        << "query.prepare(\"SELECT id FROM User WHERE id = :id\"); query.bindValue(\":id\", id);";
+    QTest::newRow("c")
+        << static_cast<int>(Type::C)
+        << "SqlUser.c"
+        << "sqlite3_prepare_v2(db, sql, -1, &stmt, 0); sqlite3_bind_int(stmt, 1, id);";
+    QTest::newRow("csharp")
+        << static_cast<int>(Type::Csharp)
+        << "SqlUser.cs"
+        << "command.Parameters.Add(parameter);";
+    QTest::newRow("python")
+        << static_cast<int>(Type::Python)
+        << "SqlUser.py"
+        << "cursor.execute(sql, (user_id,))";
+    QTest::newRow("go")
+        << static_cast<int>(Type::Go)
+        << "SqlUser.go"
+        << "db.QueryContext(ctx, query, id)";
+    QTest::newRow("rust")
+        << static_cast<int>(Type::Rust)
+        << "SqlUser.rs"
+        << "sqlx::query(query).bind(id).fetch_one(pool).await";
+    QTest::newRow("fsharp")
+        << static_cast<int>(Type::Fsharp)
+        << "SqlUser.fs"
+        << "command.Parameters.Add(parameter) |> ignore";
+    QTest::newRow("powershell")
+        << static_cast<int>(Type::Powershell)
+        << "SqlUser.ps1"
+        << "$command.Parameters.Add($parameter) | Out-Null";
+    QTest::newRow("java")
+        << static_cast<int>(Type::Java)
+        << "SqlUser.java"
+        << "PreparedStatement statement; statement.setInt(1, id);";
+}
+
+void DalGenerationTest::acceptsSecureBindingForEveryLanguage()
+{
+    QFETCH(int, languageValue);
+    QFETCH(QString, fileName);
+    QFETCH(QString, code);
+
+    CodeGenerationOptions options;
+    options.entity = false;
+    options.dto = false;
+    options.interfaces = false;
+
+    const QString response =
+        "FILE: " + fileName + "\n" + code;
+    const QStringList errors =
+        CodeGenerationProfile::validateResponse(
+            response,
+            static_cast<ProgrammingLanguage::ProgrammingLanguageType>(
+                languageValue),
+            options,
+            {"User"});
+
+    QVERIFY2(
+        errors.isEmpty(),
+        qPrintable(errors.join("\n")));
+}
+
+void DalGenerationTest::validatesCompleteLayeredCode()
+{
+    CodeGenerationOptions options;
+    options.interfaces = false;
+
+    const QString response =
+        "FILE: UserEntity.h\n"
+        "struct UserEntity { int id; };\n\n"
+        "FILE: UserEntity.cpp\n"
+        "#include \"UserEntity.h\"\n\n"
+        "FILE: UserDto.h\n"
+        "struct UserDto { int id; };\n\n"
+        "FILE: UserDto.cpp\n"
+        "#include \"UserDto.h\"\n\n"
+        "FILE: SqlUser.h\n"
+        "class SqlUser {};\n\n"
+        "FILE: SqlUser.cpp\n"
+        "QSqlQuery query;\n"
+        "query.prepare(\"SELECT id FROM User WHERE id = :id\");\n"
+        "query.bindValue(\":id\", id);\n\n"
+        "FILE: dependencies.txt\n"
+        "Qt 6.5\n";
+
+    const QStringList errors =
+        CodeGenerationProfile::validateResponse(
+            response,
+            ProgrammingLanguage::ProgrammingLanguageType::Cplusplus,
+            options,
+            {"User"});
+
+    QVERIFY2(
+        errors.isEmpty(),
+        qPrintable(errors.join("\n")));
+}
+
+void DalGenerationTest::rejectsUnsafeOrWrongLanguageCode()
+{
+    CodeGenerationOptions options;
+    options.entity = false;
+    options.dto = false;
+    options.interfaces = false;
+
+    const QString response =
+        "FILE: SqlUser.cs\n"
+        "cursor.execute(f\"SELECT * FROM User WHERE id = {user_id}\")\n";
+
+    const QStringList errors =
+        CodeGenerationProfile::validateResponse(
+            response,
+            ProgrammingLanguage::ProgrammingLanguageType::Python,
+            options,
+            {"User"});
+
+    QVERIFY(!errors.isEmpty());
+    QVERIFY(errors.join("\n").contains("Unexpected file extension"));
+    QVERIFY(errors.join("\n").contains("parameter binding"));
+    QVERIFY(errors.join("\n").contains("string formatting"));
 }
 
 QTEST_MAIN(DalGenerationTest)
