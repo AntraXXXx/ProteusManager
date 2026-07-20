@@ -1,5 +1,7 @@
 #include "appcontroller.h"
 
+#include <algorithm>
+
 namespace
 {
 QString driverKeyFromDisplayName(const QString& driverName)
@@ -463,7 +465,9 @@ void AppController::handleNormalizationResponse(
     if (noChangesRequired)
     {
         if (m_dataBaseManager->hasNormalizationEvidence(
-                sourceNormalizationTables()))
+                m_normalizationInputTables.isEmpty()
+                    ? sourceNormalizationTables()
+                    : m_normalizationInputTables))
         {
             if (m_normalizationRepairAttempts == 0
                 && m_aiEnvironmentReady)
@@ -599,6 +603,72 @@ QStringList AppController::sourceNormalizationTables() const
     return m_dataBaseManager->getTableNames();
 }
 
+int AppController::storeNormalizationVersion(
+    const NormalizationVersion& version)
+{
+    QStringList existingForms;
+    for (const NormalizationVersion& existingVersion :
+         m_normalizationHistory)
+    {
+        existingForms.append(existingVersion.form);
+    }
+
+    const int insertionIndex =
+        NormalizationPlanner::insertionIndex(
+            version.form,
+            existingForms);
+    m_normalizationHistory.insert(
+        insertionIndex,
+        version);
+    return insertionIndex;
+}
+
+bool AppController::refreshNormalizationDiagrams()
+{
+    if (!m_dataBaseManager->isConnected())
+    {
+        m_normalizationStatus =
+            "Connect a database before opening a schema diagram.";
+        emit normalizationChanged();
+        return false;
+    }
+
+    m_normalizationBeforeSchema =
+        m_dataBaseManager->buildSchemaDiagramForTables(
+            sourceNormalizationTables());
+    if (m_normalizationBeforeSchema.isEmpty())
+        m_normalizationBeforeSchema =
+            m_dataBaseManager->buildSchemaDiagram();
+
+    if (m_normalizationReady
+        && !m_normalizationOutput.isEmpty()
+        && m_normalizationOutput.compare(
+               "NO_CHANGES_REQUIRED",
+               Qt::CaseInsensitive) != 0)
+    {
+        m_normalizationAfterSchema =
+            m_dataBaseManager->buildSchemaDiagramWithMigration(
+                m_normalizationOutput);
+    }
+    else if (!m_appliedNormalizationForm.isEmpty())
+    {
+        m_normalizationAfterSchema =
+            m_dataBaseManager->buildSchemaDiagramForTables(
+                activeNormalizationTables());
+    }
+
+    if (m_normalizationBeforeSchema.isEmpty())
+    {
+        m_normalizationStatus =
+            "The connected database does not contain any tables. Create or connect a schema before normalization.";
+        emit normalizationChanged();
+        return false;
+    }
+
+    emit normalizationChanged();
+    return true;
+}
+
 void AppController::saveNormalizationState()
 {
     QVariantList storedVersions;
@@ -638,10 +708,21 @@ void AppController::prepareNormalizationVersion(
         return;
     }
 
+    if (m_dataBaseManager->getTableNames().isEmpty())
+    {
+        m_normalizationStatus =
+            "The connected database does not contain any tables. Create or connect a schema before normalization.";
+        m_normalizationBeforeSchema.clear();
+        m_normalizationAfterSchema.clear();
+        emit normalizationChanged();
+        return;
+    }
+
     const NormalizationVersion& version =
         m_normalizationHistory.at(versionIndex);
     m_pendingNormalizationVersion = versionIndex;
     m_selectedNormalizationForm = version.form;
+    m_normalizationInputTables.clear();
     m_normalizationOutput =
         version.form.isEmpty()
             ? "Reactivate the original schema version. No SQL execution is required."
@@ -670,6 +751,7 @@ void AppController::clearNormalizationPreview(
 {
     m_pendingNormalizationVersion = -1;
     m_selectedNormalizationForm.clear();
+    m_normalizationInputTables.clear();
     m_normalizationOutput.clear();
     m_normalizationReady = false;
     m_loading = false;
@@ -781,11 +863,24 @@ void AppController::loadNormalizationState(
         m_activeNormalizationVersion = 0;
     }
 
-    m_activeNormalizationVersion =
+    const int storedActiveIndex =
         qBound(
             0,
             m_activeNormalizationVersion,
             m_normalizationHistory.size() - 1);
+    const QString storedActiveForm =
+        m_normalizationHistory.at(storedActiveIndex).form;
+    std::stable_sort(
+        m_normalizationHistory.begin(),
+        m_normalizationHistory.end(),
+        [](const NormalizationVersion& left,
+           const NormalizationVersion& right)
+        {
+            return NormalizationPlanner::formRank(left.form)
+                   < NormalizationPlanner::formRank(right.form);
+        });
+    m_activeNormalizationVersion =
+        qMax(0, normalizationVersionIndex(storedActiveForm));
     const NormalizationVersion& activeVersion =
         m_normalizationHistory.at(m_activeNormalizationVersion);
     m_appliedNormalizationForm = activeVersion.form;
@@ -795,6 +890,7 @@ void AppController::loadNormalizationState(
     m_normalizationOutput.clear();
     m_normalizationReady = false;
     m_pendingNormalizationVersion = -1;
+    m_normalizationInputTables.clear();
     m_normalizationBeforeSchema =
         m_dataBaseManager->buildSchemaDiagramForTables(
             sourceNormalizationTables());
@@ -806,11 +902,19 @@ void AppController::loadNormalizationState(
             ? QVariantList{}
             : m_dataBaseManager->buildSchemaDiagramForTables(
                   activeVersion.tableNames);
-    m_normalizationStatus =
-        m_appliedNormalizationForm.isEmpty()
-            ? "No normalization has been applied."
-            : "Applied normalization: "
-                  + m_appliedNormalizationForm;
+    if (m_dataBaseManager->getTableNames().isEmpty())
+    {
+        m_normalizationStatus =
+            "The connected database does not contain any tables. Create or connect a schema before normalization.";
+    }
+    else
+    {
+        m_normalizationStatus =
+            m_appliedNormalizationForm.isEmpty()
+                ? "No normalization has been applied."
+                : "Applied normalization: "
+                      + m_appliedNormalizationForm;
+    }
 
     saveNormalizationState();
     emit normalizationChanged();
@@ -938,6 +1042,16 @@ void AppController::onGenerateNormalization(
         return;
     }
 
+    if (m_dataBaseManager->getTableNames().isEmpty())
+    {
+        m_normalizationStatus =
+            "The connected database does not contain any tables. Create or connect a schema before normalization.";
+        m_normalizationBeforeSchema.clear();
+        m_normalizationAfterSchema.clear();
+        emit normalizationChanged();
+        return;
+    }
+
     const int existingVersion =
         normalizationVersionIndex(form);
     if (existingVersion >= 0)
@@ -947,6 +1061,7 @@ void AppController::onGenerateNormalization(
             m_selectedNormalizationForm = form;
             m_normalizationReady = false;
             m_pendingNormalizationVersion = -1;
+            m_normalizationInputTables.clear();
             m_normalizationOutput.clear();
             m_normalizationBeforeSchema =
                 m_dataBaseManager->buildSchemaDiagramForTables(
@@ -972,6 +1087,19 @@ void AppController::onGenerateNormalization(
     m_normalizationRepairAttempts = 0;
     m_normalizationReady = false;
     m_pendingNormalizationVersion = -1;
+    m_normalizationInputTables =
+        NormalizationPlanner::inputTables(
+            form,
+            m_appliedNormalizationForm,
+            sourceNormalizationTables(),
+            activeNormalizationTables());
+    if (m_normalizationInputTables.isEmpty())
+    {
+        m_normalizationStatus =
+            "No source tables are available for the selected normalization target.";
+        emit normalizationChanged();
+        return;
+    }
     m_normalizationBeforeSchema =
         m_dataBaseManager->buildSchemaDiagramForTables(
             sourceNormalizationTables());
@@ -1012,10 +1140,15 @@ void AppController::onGenerateNormalization(
         + normalizationGoal(form)
         + " "
         + normalizationDialectRules(driver)
-        + " The selected target is cumulative: apply every required transformation from 1NF through "
-        + form
-        + ". "
-          "Infer the natural language and naming style independently from each source table and its columns. "
+        + (m_appliedNormalizationForm.isEmpty()
+               ? " The selected target is cumulative: apply every required transformation from 1NF through "
+                     + form + ". "
+               : " Continue from the active "
+                     + m_appliedNormalizationForm
+                     + " schema toward "
+                     + form
+                     + ". Do not recreate the previous version. ")
+        + "Infer the natural language and naming style independently from each source table and its columns. "
           "Name generated tables, columns, constraints and indexes in that same language and style. "
           "Never translate German identifiers to English or English identifiers to German. "
           "Use the supplied sample rows and delimiter profiles to detect repeating groups and aligned list values. "
@@ -1023,10 +1156,11 @@ void AppController::onGenerateNormalization(
           "When multiple columns contain aligned lists, split them by ordinal into atomic child rows without changing their pairing. "
           "Infer functional dependencies only when supported by keys, relationships, identifier meaning, repeated values or samples. "
           "Preserve every original atomic value in the normalized target tables. "
-          "Only normalize the original source schema tables supplied below. Ignore older retained normalized versions that are not listed. "
+          "Only normalize the input schema tables supplied below. Ignore retained versions that are not listed. "
           "Existing data must never be deleted, overwritten or truncated. "
           "Keep every existing source table and every existing row unchanged. "
           "Create new normalized tables with clear names and copy data using INSERT INTO ... SELECT. "
+          "Do not CREATE a table with a name that already exists in the input schema. "
           "Use SELECT DISTINCT only when it does not remove semantically different rows. "
           "Create primary keys, unique constraints, foreign keys and indexes where justified by the schema. "
           "Do not claim that normalization is complete when sample rows still contain supported repeating groups. "
@@ -1040,7 +1174,7 @@ void AppController::onGenerateNormalization(
 
     prompt +=
         m_dataBaseManager->buildNormalizationAnalysis(
-            sourceNormalizationTables());
+            m_normalizationInputTables);
 
     m_normalizationPrompt = prompt;
 
@@ -1092,13 +1226,12 @@ QString AppController::onApplyNormalization()
         const NormalizationVersion currentVersion =
             m_normalizationHistory.at(
                 m_activeNormalizationVersion);
-        m_normalizationHistory.append({
-            m_selectedNormalizationForm,
-            currentVersion.migrationSql,
-            currentVersion.tableNames
-        });
         m_activeNormalizationVersion =
-            m_normalizationHistory.size() - 1;
+            storeNormalizationVersion({
+                m_selectedNormalizationForm,
+                currentVersion.migrationSql,
+                currentVersion.tableNames
+            });
         m_appliedNormalizationForm = m_selectedNormalizationForm;
         m_lastAppliedNormalizationSql =
             currentVersion.migrationSql;
@@ -1145,13 +1278,12 @@ QString AppController::onApplyNormalization()
             m_lastAppliedNormalizationSql);
     if (targetTables.isEmpty())
         targetTables = activeNormalizationTables();
-    m_normalizationHistory.append({
-        m_appliedNormalizationForm,
-        m_lastAppliedNormalizationSql,
-        targetTables
-    });
     m_activeNormalizationVersion =
-        m_normalizationHistory.size() - 1;
+        storeNormalizationVersion({
+            m_appliedNormalizationForm,
+            m_lastAppliedNormalizationSql,
+            targetTables
+        });
     m_pendingNormalizationVersion = -1;
     m_normalizationReady = false;
     m_normalizationBeforeSchema =
@@ -1182,7 +1314,9 @@ QString AppController::onResetNormalization()
     if (!m_normalizationReady
         && m_pendingNormalizationVersion < 0
         && !m_selectedNormalizationForm.isEmpty()
-        && m_activeNormalizationVersion >= 0)
+        && m_selectedNormalizationForm.compare(
+               m_appliedNormalizationForm,
+               Qt::CaseInsensitive) != 0)
     {
         clearNormalizationPreview(
             m_appliedNormalizationForm.isEmpty()
@@ -1190,29 +1324,6 @@ QString AppController::onResetNormalization()
                 : "Normalization selection cleared. Active version remains "
                       + m_appliedNormalizationForm
                       + ".");
-        return m_normalizationStatus;
-    }
-
-    if (m_pendingNormalizationVersion >= 0)
-    {
-        if (m_pendingNormalizationVersion == m_activeNormalizationVersion)
-        {
-            clearNormalizationPreview(
-                "Version switch canceled. Active normalization was not changed.");
-            return m_normalizationStatus;
-        }
-
-        if (m_pendingNormalizationVersion > 0)
-        {
-            prepareNormalizationVersion(
-                m_pendingNormalizationVersion - 1,
-                "Reset");
-            return m_normalizationStatus;
-        }
-
-        m_normalizationStatus =
-            "Original schema is already the earliest available version.";
-        emit normalizationChanged();
         return m_normalizationStatus;
     }
 
@@ -1224,7 +1335,12 @@ QString AppController::onResetNormalization()
         return m_normalizationStatus;
     }
 
-    if (m_activeNormalizationVersion <= 0)
+    const int baseVersion =
+        m_pendingNormalizationVersion >= 0
+            ? m_pendingNormalizationVersion
+            : m_activeNormalizationVersion;
+    if (baseVersion < 0
+        || baseVersion >= m_normalizationHistory.size())
     {
         m_normalizationStatus =
             "No earlier normalization version is available.";
@@ -1232,9 +1348,34 @@ QString AppController::onResetNormalization()
         return m_normalizationStatus;
     }
 
-    prepareNormalizationVersion(
-        m_activeNormalizationVersion - 1,
-        "Reset");
+    const QString baseForm =
+        m_normalizationHistory.at(baseVersion).form;
+    const int baseRank =
+        NormalizationPlanner::formRank(baseForm);
+    if (baseRank < 0)
+    {
+        m_normalizationStatus =
+            "Original schema is already the earliest available version.";
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    const QString previousForm =
+        baseRank == 0
+            ? QString()
+            : NormalizationPlanner::previousForm(baseForm);
+    const int previousVersion =
+        normalizationVersionIndex(previousForm);
+    if (previousVersion >= 0)
+    {
+        prepareNormalizationVersion(
+            previousVersion,
+            "Previous level");
+    }
+    else
+    {
+        onGenerateNormalization(previousForm);
+    }
     return m_normalizationStatus;
 }
 
@@ -1252,20 +1393,38 @@ QString AppController::onAdvanceNormalization()
         m_pendingNormalizationVersion >= 0
             ? m_pendingNormalizationVersion
             : m_activeNormalizationVersion;
-    const int nextVersion =
-        baseVersion + 1;
-
-    if (nextVersion >= m_normalizationHistory.size())
+    if (baseVersion < 0
+        || baseVersion >= m_normalizationHistory.size())
     {
         m_normalizationStatus =
-            "No later normalization version is available yet. Select the next normal form to generate it.";
+            "No active normalization version is available.";
         emit normalizationChanged();
         return m_normalizationStatus;
     }
 
-    prepareNormalizationVersion(
-        nextVersion,
-        "Next version");
+    const QString nextForm =
+        NormalizationPlanner::nextForm(
+            m_normalizationHistory.at(baseVersion).form);
+    if (nextForm.isEmpty())
+    {
+        m_normalizationStatus =
+            "The active schema is already at the last supported normal form.";
+        emit normalizationChanged();
+        return m_normalizationStatus;
+    }
+
+    const int nextVersion =
+        normalizationVersionIndex(nextForm);
+    if (nextVersion >= 0)
+    {
+        prepareNormalizationVersion(
+            nextVersion,
+            "Next level");
+    }
+    else
+    {
+        onGenerateNormalization(nextForm);
+    }
     return m_normalizationStatus;
 }
 
@@ -1295,14 +1454,7 @@ QStringList AppController::databaseDriverNames() const
 
 QStringList AppController::normalizationForms() const
 {
-    return {
-        "1NF",
-        "2NF",
-        "3NF",
-        "BCNF",
-        "4NF",
-        "5NF"
-    };
+    return NormalizationPlanner::forms();
 }
 
 QString AppController::selectedLanguageName() const
@@ -1377,9 +1529,18 @@ bool AppController::canAdvanceNormalization() const
             ? m_pendingNormalizationVersion
             : m_activeNormalizationVersion;
 
-    return !m_loading
-           && baseVersion >= 0
-           && baseVersion + 1 < m_normalizationHistory.size();
+    if (m_loading
+        || (m_normalizationReady
+            && m_pendingNormalizationVersion < 0)
+        || baseVersion < 0
+        || baseVersion >= m_normalizationHistory.size())
+    {
+        return false;
+    }
+
+    return !NormalizationPlanner::nextForm(
+                m_normalizationHistory.at(baseVersion).form)
+                .isEmpty();
 }
 
 QVariantList AppController::normalizationBeforeSchema() const
