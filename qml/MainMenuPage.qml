@@ -81,7 +81,7 @@ Page {
                             Layout.fillWidth: true
 
                             Label {
-                                text: "Code Language:"
+                                text: "Project Language:"
                                 font.pixelSize: 18
                             }
 
@@ -103,7 +103,7 @@ Page {
 
                                 SettingHelpButton {
                                     objectName: "languageHelpButton"
-                                    helpText: "Chooses the target language for generated application code, file names and database access patterns."
+                                    helpText: "Chooses how Class to SQL reads source classes and which language Secure Code generates."
                                 }
                             }
 
@@ -551,12 +551,18 @@ Page {
 
             Button {
                 id: pushButton_SqlGenerator
-                text: "SQL Generator"
+                text: "Class to SQL"
                 enabled: databaseConnected && appController.aiEnvironmentReady
+                hoverEnabled: true
                 font.pixelSize: 16
                 Layout.fillWidth: true
                 Layout.minimumWidth: 145
                 Layout.preferredHeight: 48
+
+                ToolTip.visible: hovered
+                ToolTip.text: "Create a database schema from "
+                              + appController.selectedLanguageName
+                              + " class declarations"
 
                 onClicked: {
                     appStack.push(
@@ -569,13 +575,19 @@ Page {
             Button {
                 id: pushButton_CodeGenerator
 
-                    text: "Code Generator"
+                    text: "Secure Code"
                     enabled: databaseConnected && appController.aiEnvironmentReady
+                    hoverEnabled: true
 
                     font.pixelSize: 16
                     Layout.fillWidth: true
                     Layout.minimumWidth: 150
                     Layout.preferredHeight: 48
+
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Generate validated, injection-safe "
+                                  + appController.selectedLanguageName
+                                  + " database access code"
 
                     onClicked: {
                         appStack.push(

@@ -519,6 +519,20 @@ void QmlWorkflowTest::loadsMainMenuPage()
             "AI Status:")
         != nullptr);
 
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Class to SQL")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Secure Code")
+        != nullptr);
+
     const QStringList helpButtons = {
         "languageHelpButton",
         "aiModelHelpButton",
@@ -667,6 +681,34 @@ void QmlWorkflowTest::sqlPageDisplaysGeneratedSql()
             "Generated SQL will appear here...");
 
     QVERIFY(outputArea != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Class to SQL")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "1. Source Classes")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Create SQL Schema")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Apply to Database")
+        != nullptr);
 
     const QStringList helpButtons = {
         "classesFolderHelpButton",

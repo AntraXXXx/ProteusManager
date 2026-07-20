@@ -5,9 +5,11 @@ import QtQuick.Dialogs
 
 Page {
     id: sqlGeneratorPage
+
     property StackView appStack
-    title: "SQL Generator"
     readonly property bool compactLayout: width < 700
+
+    title: "Class to SQL"
 
     background: Rectangle {
         color: "#eef2f7"
@@ -17,19 +19,38 @@ Page {
         anchors.fill: parent
         anchors.margins: compactLayout ? 12 : 24
 
-        Label {
-            id: sqlPageTitle
-            text: "SQL Generator"
-            font.pixelSize: 32
-            font.bold: true
-            color: "#101828"
+        ColumnLayout {
+            id: sqlPageHeader
             anchors.top: parent.top
-            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: 3
+
+            Label {
+                text: "Class to SQL"
+                font.pixelSize: 32
+                font.bold: true
+                color: "#101828"
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            Label {
+                objectName: "classToSqlWorkflowLabel"
+                text: appController.selectedLanguageName
+                      + " classes  ->  database schema"
+                font.pixelSize: 14
+                color: "#667085"
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
         }
 
         ScrollView {
             id: sqlContentScroll
-            anchors.top: sqlPageTitle.bottom
+            anchors.top: sqlPageHeader.bottom
             anchors.topMargin: 12
             anchors.left: parent.left
             anchors.right: parent.right
@@ -44,165 +65,157 @@ Page {
                 spacing: 14
 
                 Frame {
-            Layout.fillWidth: true
-            padding: compactLayout ? 14 : 18
-
-            background: Rectangle {
-                color: "white"
-                radius: 8
-                border.color: "#d0d5dd"
-            }
-
-            ColumnLayout {
-                anchors.fill: parent
-                  spacing: 12
-
-                Label {
-                    text: "Classes Source Folder"
-                    font.pixelSize: 20
-                    font.bold: true
-                }
-
-                RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    padding: compactLayout ? 14 : 18
 
-                    FolderDialog {
-                        id: folderDialog
-                        title: "Select script class Folder"
-                        onAccepted: {
-                            let path = selectedFolder.toString();
-                            path = path.replace(/^file:\/\/\//, "");
-                            if (path.match(/^\/[a-zA-Z]:\//)) {
-                                path = path.substring(1);
+                    background: Rectangle {
+                        color: "white"
+                        radius: 8
+                        border.color: "#d0d5dd"
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 10
+
+                        Label {
+                            text: "1. Source Classes"
+                            font.pixelSize: 20
+                            font.bold: true
+                            color: "#101828"
+                        }
+
+                        Label {
+                            objectName: "classSourceRequirementLabel"
+                            text: "Expected input: "
+                                  + appController.selectedLanguageName
+                                  + " class declarations with data fields"
+                            color: "#475467"
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            FolderDialog {
+                                id: folderDialog
+                                title: "Select class source folder"
+                                onAccepted: {
+                                    let path = selectedFolder.toString()
+                                    path = path.replace(/^file:\/\/\//, "")
+                                    if (path.match(/^\/[a-zA-Z]:\//))
+                                        path = path.substring(1)
+                                    classSourceFolder.text = path
+                                    appController.setClassesFolderPath(path)
+                                }
                             }
-                            lineEdit_scriptclassespath.text = path;
-                            appController.setClassesFolderPath(path)
+
+                            TextField {
+                                id: classSourceFolder
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 42
+                                text: appController.classesFolderPath
+                                font.pixelSize: 16
+                                leftPadding: 14
+                                placeholderText: "Select a folder containing source classes"
+                                onEditingFinished: appController.setClassesFolderPath(text)
+                            }
+
+                            Button {
+                                text: "Browse"
+                                font.pixelSize: 15
+                                Layout.preferredWidth: 90
+                                Layout.preferredHeight: 42
+                                onClicked: folderDialog.open()
+                            }
+
+                            SettingHelpButton {
+                                objectName: "classesFolderHelpButton"
+                                helpText: "Scans source files for real class or struct declarations with data fields. Object instances and unrelated files are ignored."
+                            }
                         }
                     }
-
-                    Button {
-                        text: "Browse"
-                        font.pixelSize: 15
-                        Layout.preferredWidth: 90
-                        Layout.preferredHeight: 42
-
-
-                        onClicked: {
-                            folderDialog.open()
-                        }
-                    }
-
-                    TextField {
-                        id: lineEdit_scriptclassespath
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 42
-
-                        text: appController.classesFolderPath
-                        font.pixelSize: 16
-                        leftPadding: 18
-
-                        horizontalAlignment: TextInput.AlignLeft
-                        verticalAlignment: TextInput.AlignVCenter
-
-                        placeholderText: "Classes folder..."
-
-                        onEditingFinished: {
-                            appController.setClassesFolderPath(text)
-                        }
-                    }
-
-                    SettingHelpButton {
-                        objectName: "classesFolderHelpButton"
-                        helpText: "Chooses the source folder scanned for classes. Only readable source files are used to build the SQL schema prompt."
-                    }
-
-                     // Connections {
-                     //     target: appController
-
-                     //     function onClassesFolderPathChanged(path)
-                     //     {
-                     //         lineEdit_scriptclassespath.text = path
-                     //     }
-                     // }
                 }
-            }
-        }
 
                 Frame {
-            Layout.fillWidth: true
-            padding: compactLayout ? 14 : 18
-
-            background: Rectangle {
-                color: "white"
-                radius: 8
-                border.color: "#d0d5dd"
-            }
-
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 12
-
-                Label {
-                    text: "SQL Settings"
-                    font.pixelSize: 20
-                    font.bold: true
-                }
-                RowLayout {
                     Layout.fillWidth: true
+                    padding: compactLayout ? 14 : 18
 
-                    CheckBox {
-                        id: auditFieldsCheckBox
-                        text: "Add audit fields (createdAt, updatedAt)"
-                        font.pixelSize: 16
-                        Layout.fillWidth: true
+                    background: Rectangle {
+                        color: "white"
+                        radius: 8
+                        border.color: "#d0d5dd"
                     }
 
-                    SettingHelpButton {
-                        objectName: "auditFieldsHelpButton"
-                        helpText: "Adds creation and update timestamps for traceability. This supports audits but does not replace access control."
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 10
+
+                        Label {
+                            text: "2. Schema Options"
+                            font.pixelSize: 20
+                            font.bold: true
+                            color: "#101828"
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            CheckBox {
+                                id: auditFieldsCheckBox
+                                text: "Add audit fields (createdAt, updatedAt)"
+                                font.pixelSize: 16
+                                Layout.fillWidth: true
+                            }
+
+                            SettingHelpButton {
+                                objectName: "auditFieldsHelpButton"
+                                helpText: "Adds creation and update timestamps for traceability. This supports audits but does not replace access control."
+                            }
+                        }
                     }
                 }
-            }
-        }
 
                 Frame {
-            Layout.fillWidth: true
+                    Layout.fillWidth: true
                     Layout.preferredHeight: 340
-            padding: compactLayout ? 14 : 18
+                    padding: compactLayout ? 14 : 18
 
-            background: Rectangle {
-                color: "white"
-                radius: 8
-                border.color: "#d0d5dd"
-            }
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 12
+                    background: Rectangle {
+                        color: "white"
+                        radius: 8
+                        border.color: "#d0d5dd"
+                    }
 
-                Label {
-                    text: "Generated SQL"
-                    font.pixelSize: 20
-                    font.bold: true
-                }
-                ScrollView {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.preferredHeight: 250
-                    clip: true
-                        TextArea {
-                            id: lineEdit_generatedsqlcodeoutput
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 10
+
+                        Label {
+                            text: "3. SQL Preview"
+                            font.pixelSize: 20
+                            font.bold: true
+                            color: "#101828"
+                        }
+
+                        ScrollView {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            font.family: "Consolas"
-                            font.pixelSize: 15
-                            wrapMode: TextEdit.WrapAnywhere
-                            placeholderText: "Generated SQL will appear here..."
-                            height: parent.height
+                            Layout.preferredHeight: 250
+                            clip: true
+
+                            TextArea {
+                                id: generatedSqlArea
+                                font.family: "Consolas"
+                                font.pixelSize: 15
+                                wrapMode: TextEdit.WrapAnywhere
+                                placeholderText: "Generated SQL will appear here..."
+                            }
                         }
                     }
-            }
-        }
+                }
             }
         }
 
@@ -212,75 +225,45 @@ Page {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            columns: sqlGeneratorPage.width < 560 ? 1 : sqlGeneratorPage.width < 860 ? 2 : 4
+            columns: sqlGeneratorPage.width < 560
+                     ? 1 : sqlGeneratorPage.width < 860 ? 2 : 4
             columnSpacing: 14
             rowSpacing: 10
 
-            Connections {
-                 target: appController
-
-                //  function onClassesFolderPathChanged(path) {
-                //      lineEdit_scriptclassespath.text = path
-                // }
-
-                 function onSqlOutputChanged(text) {
-                     lineEdit_generatedsqlcodeoutput.text = text
-                 }
-
-                 // function onSqlGenerationLoadingChanged(loading) {
-                 //     progressBar_loading.visible = loading
-                 // }
-
-                 // function onSqlGenerateEnabledChanged(enabled) {
-                 //     pushButton_generate.enabled = enabled
-                 // }
-
-                 function onWarningOccurred(title, message) {
-                     lineEdit_generatedsqlcodeoutput.text = title + "\n" + message
-                 }
-            }
-
             Button {
-                id: pushButton_generate
-                text: "Generate SQL"
-                enabled: !appController.loading && appController.aiEnvironmentReady
+                id: generateSqlButton
+                text: "Create SQL Schema"
+                enabled: !appController.loading
+                         && appController.aiEnvironmentReady
+                         && classSourceFolder.text.trim().length > 0
                 font.pixelSize: 16
                 Layout.fillWidth: true
-                Layout.minimumWidth: 140
+                Layout.minimumWidth: 150
                 Layout.preferredHeight: 48
                 onClicked: {
-                    appController.setClassesFolderPath(lineEdit_scriptclassespath.text)
+                    appController.setClassesFolderPath(classSourceFolder.text)
                     appController.setAddAuditFields(auditFieldsCheckBox.checked)
                     appController.onGenerateSqlCode()
-                    //button_SqlBack.enabled = false
-                   // pushButton_generate.enabled = false
-                    //button_execute.enabled = true
                 }
             }
 
-            // Button {
-            //     text: "Normalize"
-            //     font.pixelSize: 16
-            //     Layout.preferredHeight: 48
-            // }
-
             Button {
-                id: button_execute
-                text: "Execute SQL"
-                enabled: appController.executable && !appController.loading && lineEdit_generatedsqlcodeoutput.text.length !== 0
+                id: executeSqlButton
+                text: "Apply to Database"
+                enabled: appController.executable
+                         && !appController.loading
+                         && generatedSqlArea.text.trim().length > 0
                 font.pixelSize: 16
                 Layout.fillWidth: true
-                Layout.minimumWidth: 140
+                Layout.minimumWidth: 150
                 Layout.preferredHeight: 48
                 onClicked: {
-                    lineEdit_generatedsqlcodeoutput.text = appController.onExecuteSqlCode(
-                        lineEdit_generatedsqlcodeoutput.text
-                    )
+                    generatedSqlArea.text = appController.onExecuteSqlCode(
+                                generatedSqlArea.text)
                 }
             }
 
             ProgressBar {
-                id: progressBar_loading
                 visible: appController.loading
                 indeterminate: true
                 Layout.fillWidth: true
@@ -288,16 +271,25 @@ Page {
             }
 
             Button {
-                id: button_SqlBack
                 text: "Back"
                 font.pixelSize: 16
                 Layout.fillWidth: true
                 Layout.minimumWidth: 110
                 Layout.preferredHeight: 48
                 enabled: !appController.loading
-                onClicked: {
-                    appStack.pop()
-                }
+                onClicked: appStack.pop()
+            }
+        }
+
+        Connections {
+            target: appController
+
+            function onSqlOutputChanged(text) {
+                generatedSqlArea.text = text
+            }
+
+            function onWarningOccurred(title, message) {
+                generatedSqlArea.text = title + "\n" + message
             }
         }
     }
