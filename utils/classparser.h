@@ -12,6 +12,9 @@ public:
     QList<ParsedClass> parseClasses(
         const QString& content,
         ProgrammingLanguage::ProgrammingLanguageType language);
+    QList<ParsedClass> parseDatabaseClasses(
+        const QString& content,
+        ProgrammingLanguage::ProgrammingLanguageType language);
 
 private:
     QList<ParsedClass> parseCppClasses(const QString& content);

@@ -1835,6 +1835,28 @@ void AppController::onGenerateSqlCode()
         return;
     }
 
+    QList<ParsedClass> databaseClasses;
+
+    for (const ScannedClassFile& file : files)
+    {
+        databaseClasses.append(
+            parser.parseDatabaseClasses(
+                file.content,
+                m_selectedLanguageType));
+    }
+
+    if (databaseClasses.isEmpty())
+    {
+        emit warningOccurred(
+            "No database classes found",
+            "The selected folder contains no supported class or struct declarations with data fields. Object instances and unrelated source files cannot be converted to a SQL schema."
+            );
+
+        m_loading = false;
+        emit loadingChanged();
+        return;
+    }
+
     const QString databaseDialect =
         databaseDialectName(
             m_dataBaseManager->databaseDriver());
@@ -1896,90 +1918,83 @@ void AppController::onGenerateSqlCode()
         "No explanation.\n\n";
 
     emit sqlOutputChanged(
-        "Parsing classes and attributes...\n"
+        QString("Found %1 database class(es).\n")
+            .arg(databaseClasses.size())
+        + "Parsing classes and attributes...\n"
         "Checking existing database tables...\n"
         "Checking existing columns...\n"
         );
 
-    for (const ScannedClassFile& file : files)
+    for (const ParsedClass& cls : databaseClasses)
     {
-        QList<ParsedClass> classes =
-            parser.parseClasses(
-                file.content,
-                m_selectedLanguageType
-                );
+        m_prompt += "Class: " + cls.name + "\n";
 
-        for (const ParsedClass& cls : classes)
+        bool tableExists =
+            m_dataBaseManager->tableExists(cls.name);
+
+        if (tableExists)
         {
-            m_prompt += "Class: " + cls.name + "\n";
+            m_prompt += "Existing table: yes\n";
 
-            bool tableExists =
-                m_dataBaseManager->tableExists(cls.name);
+            if (m_dataBaseManager->hasRows(cls.name))
+                m_prompt += "Table contains data: yes\n";
+            else
+                m_prompt += "Table contains data: no\n";
+
+            QStringList existingColumns =
+                m_dataBaseManager->getColumnNames(cls.name);
+
+            m_prompt +=
+                "Existing columns: "
+                + existingColumns.join(", ")
+                + "\n";
+        }
+        else
+        {
+            m_prompt += "Existing table: no\n";
+        }
+
+        for (const ParsedAttribute& attribute : cls.attributes)
+        {
+            const QString sqlType =
+                ProgrammingLanguage::mapToSqlType(
+                    attribute.type,
+                    m_selectedLanguageType);
+
+            m_prompt += "- "
+                        + attribute.type
+                        + " "
+                        + attribute.name
+                        + " sql_type="
+                        + sqlType;
+
+            if (ProgrammingLanguage::isNullableType(attribute.type))
+                m_prompt += " nullable";
+
+            if (ProgrammingLanguage::isCollectionType(attribute.type))
+                m_prompt += " collection";
 
             if (tableExists)
             {
-                m_prompt += "Existing table: yes\n";
-
-                if (m_dataBaseManager->hasRows(cls.name))
-                    m_prompt += "Table contains data: yes\n";
-                else
-                    m_prompt += "Table contains data: no\n";
-
-                QStringList existingColumns =
-                    m_dataBaseManager->getColumnNames(cls.name);
-
-                m_prompt +=
-                    "Existing columns: "
-                    + existingColumns.join(", ")
-                    + "\n";
-            }
-            else
-            {
-                m_prompt += "Existing table: no\n";
-            }
-
-            for (const ParsedAttribute& attribute : cls.attributes)
-            {
-                const QString sqlType =
-                    ProgrammingLanguage::mapToSqlType(
-                        attribute.type,
-                        m_selectedLanguageType);
-
-                m_prompt += "- "
-                            + attribute.type
-                            + " "
-                            + attribute.name
-                            + " sql_type="
-                            + sqlType;
-
-                if (ProgrammingLanguage::isNullableType(attribute.type))
-                    m_prompt += " nullable";
-
-                if (ProgrammingLanguage::isCollectionType(attribute.type))
-                    m_prompt += " collection";
-
-                if (tableExists)
+                if (m_dataBaseManager->columnExists(
+                        cls.name,
+                        attribute.name))
                 {
-                    if (m_dataBaseManager->columnExists(
-                            cls.name,
-                            attribute.name))
-                    {
-                        m_prompt += " existing_column";
-                    }
-                    else
-                    {
-                        m_prompt += " missing_column";
-                    }
+                    m_prompt += " existing_column";
                 }
-
-                if (attribute.isRelation)
-                    m_prompt += " relationship";
-
-                m_prompt += "\n";
+                else
+                {
+                    m_prompt += " missing_column";
+                }
             }
+
+            if (attribute.isRelation)
+                m_prompt += " relationship";
 
             m_prompt += "\n";
         }
+
+        m_prompt += "\n";
     }
 
     emit sqlOutputChanged("Generating SQL schema with AI...");
