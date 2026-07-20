@@ -13,6 +13,10 @@ ToolButton {
     font.pixelSize: 13
     implicitWidth: 26
     implicitHeight: 26
+    activeFocusOnTab: true
+
+    Accessible.name: "Setting information"
+    Accessible.description: helpText
 
     ToolTip.visible: hovered || checked || activeFocus
     ToolTip.delay: 250
