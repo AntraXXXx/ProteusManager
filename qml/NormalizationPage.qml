@@ -9,8 +9,29 @@ Page {
 
     title: "Database Normalization"
 
+    function openBeforeDiagram() {
+        if (appController.refreshNormalizationDiagrams()
+                && appController.normalizationBeforeSchema.length > 0) {
+            beforeDiagramWindow.visible = true
+            beforeDiagramWindow.raise()
+            beforeDiagramWindow.requestActivate()
+        }
+    }
+
+    function openAfterDiagram() {
+        appController.refreshNormalizationDiagrams()
+        if (appController.normalizationAfterSchema.length > 0) {
+            afterDiagramWindow.visible = true
+            afterDiagramWindow.raise()
+            afterDiagramWindow.requestActivate()
+        }
+    }
+
     Window {
         id: beforeDiagramWindow
+        objectName: "beforeDiagramWindow"
+        visible: false
+        flags: Qt.Window
         width: 1100
         height: 720
         minimumWidth: 600
@@ -53,6 +74,9 @@ Page {
 
     Window {
         id: afterDiagramWindow
+        objectName: "afterDiagramWindow"
+        visible: false
+        flags: Qt.Window
         width: 1100
         height: 720
         minimumWidth: 600
@@ -249,21 +273,20 @@ Page {
             rowSpacing: 10
 
             Button {
+                objectName: "openBeforeDiagramButton"
                 text: "Open Before Diagram"
                 enabled: appController.databaseConnected
-                         && appController.normalizationBeforeSchema.length > 0
                 font.pixelSize: 16
                 Layout.fillWidth: true
                 Layout.preferredHeight: 48
 
                 onClicked: {
-                    beforeDiagramWindow.show()
-                    beforeDiagramWindow.raise()
-                    beforeDiagramWindow.requestActivate()
+                    normalizationPage.openBeforeDiagram()
                 }
             }
 
             Button {
+                objectName: "openAfterDiagramButton"
                 text: "Open After Diagram"
                 enabled: appController.databaseConnected
                          && appController.normalizationAfterSchema.length > 0
@@ -274,9 +297,7 @@ Page {
                 Layout.preferredHeight: 48
 
                 onClicked: {
-                    afterDiagramWindow.show()
-                    afterDiagramWindow.raise()
-                    afterDiagramWindow.requestActivate()
+                    normalizationPage.openAfterDiagram()
                 }
             }
 

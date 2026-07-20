@@ -5,6 +5,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include <QQuickView>
 #include <QSet>
 #include <QVariantList>
 #include <QVariantMap>
@@ -40,8 +41,11 @@ class FakeAppController : public QObject
     Q_PROPERTY(QVariantList normalizationBeforeSchema READ normalizationBeforeSchema NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantList normalizationAfterSchema READ normalizationAfterSchema NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantMap codeGenerationOptions READ codeGenerationOptions NOTIFY codeGenerationSettingsChanged)
+    Q_PROPERTY(QVariantMap codeGenerationCapabilities READ codeGenerationCapabilities NOTIFY codeGenerationSettingsChanged)
     Q_PROPERTY(bool generatedCodeValid READ generatedCodeValid NOTIFY generatedCodeValidationChanged)
     Q_PROPERTY(QString codeGenerationValidationSummary READ codeGenerationValidationSummary NOTIFY generatedCodeValidationChanged)
+    Q_PROPERTY(QVariantList codeAssistantMessages READ codeAssistantMessages NOTIFY codeAssistantChanged)
+    Q_PROPERTY(bool codeAssistantBusy READ codeAssistantBusy NOTIFY codeAssistantChanged)
 
 public:
     QString selectedLanguageName() const { return m_languageName; }
@@ -70,8 +74,33 @@ public:
     QVariantList normalizationBeforeSchema() const { return m_normalizationBeforeSchema; }
     QVariantList normalizationAfterSchema() const { return m_normalizationAfterSchema; }
     QVariantMap codeGenerationOptions() const { return m_codeGenerationOptions; }
+    QVariantMap codeGenerationCapabilities() const
+    {
+        const bool python = m_languageName == "Python";
+        return {
+            {"architectures", QStringList{"Layered", "Clean Architecture", "Hexagonal"}},
+            {"dataAccessPatterns", QStringList{"Repository", "DAO"}},
+            {"databaseApis", python
+                                 ? QStringList{"DB-API", "SQLAlchemy Core"}
+                                 : QStringList{"Qt SQL"}},
+            {"layerSupport", QVariantMap{
+                 {"entity", true}, {"dto", true},
+                 {"repository", true}, {"service", true},
+                 {"controller", true}, {"domainModel", true}
+             }},
+            {"supportsInterfaces", true},
+            {"supportsAsyncOperations", python},
+            {"interfaceLabel", python
+                                   ? "Generate Protocol abstractions"
+                                   : "Generate interfaces"},
+            {"asyncLabel", "Generate asynchronous operations"},
+            {"summary", "Language-specific generation profile."}
+        };
+    }
     bool generatedCodeValid() const { return m_generatedCodeValid; }
     QString codeGenerationValidationSummary() const { return m_codeGenerationValidationSummary; }
+    QVariantList codeAssistantMessages() const { return m_codeAssistantMessages; }
+    bool codeAssistantBusy() const { return false; }
 
     Q_INVOKABLE QStringList codeLanguages() const
     {
@@ -172,6 +201,12 @@ public:
         emit normalizationChanged();
     }
 
+    Q_INVOKABLE bool refreshNormalizationDiagrams()
+    {
+        emit normalizationChanged();
+        return !m_normalizationBeforeSchema.isEmpty();
+    }
+
     Q_INVOKABLE QString onApplyNormalization()
     {
         m_appliedNormalizationForm =
@@ -248,6 +283,26 @@ public:
         return m_generatedCodeValid;
     }
 
+    Q_INVOKABLE void askCodeAssistant(
+        const QString& question,
+        const QString&)
+    {
+        m_codeAssistantMessages.append(QVariantMap{
+            {"role", "user"}, {"text", question}
+        });
+        m_codeAssistantMessages.append(QVariantMap{
+            {"role", "assistant"},
+            {"text", "Use the simplest matching architecture."}
+        });
+        emit codeAssistantChanged();
+    }
+
+    Q_INVOKABLE void clearCodeAssistant()
+    {
+        m_codeAssistantMessages.clear();
+        emit codeAssistantChanged();
+    }
+
     Q_INVOKABLE void onExportDalCode(
         const QString&,
         const QString&)
@@ -295,6 +350,7 @@ signals:
     void normalizationChanged();
     void codeGenerationSettingsChanged();
     void generatedCodeValidationChanged();
+    void codeAssistantChanged();
 
 private:
     QString m_languageName = "C++";
@@ -332,6 +388,7 @@ private:
         m_normalizationBeforeSchema;
     QVariantMap m_codeGenerationOptions = {
         {"architecture", "Layered"},
+        {"databaseApi", "Qt SQL"},
         {"dataAccessPattern", "Repository"},
         {"entity", true},
         {"dto", true},
@@ -346,6 +403,7 @@ private:
     bool m_generatedCodeValid = false;
     QString m_codeGenerationValidationSummary =
         "Generate code to run validation.";
+    QVariantList m_codeAssistantMessages;
 };
 
 namespace
@@ -426,6 +484,7 @@ private slots:
     void loadsNormalizationPage();
     void sqlPageDisplaysGeneratedSql();
     void dalPageDisplaysGeneratedCode();
+    void compactSettingsPagesKeepActionsVisible();
 };
 
 void QmlWorkflowTest::loadsMainMenuPage()
@@ -459,75 +518,128 @@ void QmlWorkflowTest::loadsMainMenuPage()
             "text",
             "AI Status:")
         != nullptr);
+
+    const QStringList helpButtons = {
+        "languageHelpButton",
+        "aiModelHelpButton",
+        "ollamaEndpointHelpButton",
+        "databaseModeHelpButton",
+        "localDatabasePathHelpButton",
+        "databaseDriverHelpButton",
+        "databaseNameHelpButton",
+        "hostNameHelpButton",
+        "portHelpButton",
+        "userNameHelpButton",
+        "passwordHelpButton"
+    };
+
+    for (const QString& objectName : helpButtons) {
+        QObject *helpButton = findObjectWithProperty(
+            page.get(),
+            "objectName",
+            objectName);
+        QVERIFY2(
+            helpButton != nullptr,
+            qPrintable("Missing contextual help: " + objectName));
+        QVERIFY(!helpButton->property("helpText")
+                     .toString().trimmed().isEmpty());
+    }
+
 }
 
 void QmlWorkflowTest::loadsNormalizationPage()
 {
-    QQmlEngine engine;
     FakeAppController controller;
-    engine.rootContext()->setContextProperty(
+    QQuickView view;
+    view.rootContext()->setContextProperty(
         "appController",
         &controller);
+    view.setSource(QUrl::fromLocalFile(
+        qmlFilePath("NormalizationPage.qml")));
+    QCOMPARE(view.status(), QQuickView::Ready);
+    view.resize(1100, 760);
+    view.show();
+    QCoreApplication::processEvents();
 
-    QQmlComponent component(
-        &engine,
-        QUrl::fromLocalFile(
-            qmlFilePath("NormalizationPage.qml")));
-
-    std::unique_ptr<QObject> page(component.create());
-
-    QVERIFY2(
-        page != nullptr,
-        qPrintable(component.errorString()));
+    QObject *pageObject = view.rootObject();
+    QVERIFY(pageObject != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Database Normalization")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "5NF")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Migration Preview")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Open Before Diagram")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Open After Diagram")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Previous Level")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Next Level")
         != nullptr);
+
+    QObject *beforeWindow =
+        findObjectWithProperty(
+            pageObject,
+            "objectName",
+            "beforeDiagramWindow");
+    QVERIFY(beforeWindow != nullptr);
+    QVERIFY(!beforeWindow->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(
+        pageObject,
+        "openBeforeDiagram"));
+    QCoreApplication::processEvents();
+    QVERIFY(beforeWindow->property("visible").toBool());
+    beforeWindow->setProperty("visible", false);
+
+    controller.onGenerateNormalization("1NF");
+    QObject *afterWindow =
+        findObjectWithProperty(
+            pageObject,
+            "objectName",
+            "afterDiagramWindow");
+    QVERIFY(afterWindow != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(
+        pageObject,
+        "openAfterDiagram"));
+    QCoreApplication::processEvents();
+    QVERIFY(afterWindow->property("visible").toBool());
+    afterWindow->setProperty("visible", false);
 }
 
 void QmlWorkflowTest::sqlPageDisplaysGeneratedSql()
@@ -555,6 +667,23 @@ void QmlWorkflowTest::sqlPageDisplaysGeneratedSql()
             "Generated SQL will appear here...");
 
     QVERIFY(outputArea != nullptr);
+
+    const QStringList helpButtons = {
+        "classesFolderHelpButton",
+        "auditFieldsHelpButton"
+    };
+
+    for (const QString& objectName : helpButtons) {
+        QObject *helpButton = findObjectWithProperty(
+            page.get(),
+            "objectName",
+            objectName);
+        QVERIFY2(
+            helpButton != nullptr,
+            qPrintable("Missing contextual help: " + objectName));
+        QVERIFY(!helpButton->property("helpText")
+                     .toString().trimmed().isEmpty());
+    }
 
     const QString sql =
         "CREATE TABLE Customer (id INTEGER PRIMARY KEY);";
@@ -607,6 +736,20 @@ void QmlWorkflowTest::dalPageDisplaysGeneratedCode()
             "Secure parameterized queries")
         != nullptr);
 
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Open Assistant")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Database API")
+        != nullptr);
+
     const QString dal =
         "FILE: CustomerRepository.h\n"
         "class CustomerRepository {};";
@@ -616,6 +759,58 @@ void QmlWorkflowTest::dalPageDisplaysGeneratedCode()
     QCOMPARE(
         outputArea->property("text").toString(),
         dal);
+}
+
+void QmlWorkflowTest::compactSettingsPagesKeepActionsVisible()
+{
+    struct PageExpectation {
+        const char *fileName;
+        const char *actionBarName;
+    };
+
+    const PageExpectation pages[] = {
+        {"MainMenuPage.qml", "mainActionBar"},
+        {"SqlGeneratorPage.qml", "sqlActionBar"}
+    };
+
+    for (const PageExpectation& expectation : pages) {
+        FakeAppController controller;
+        QQuickView view;
+        view.rootContext()->setContextProperty(
+            "appController",
+            &controller);
+        view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.resize(560, 700);
+        view.setSource(QUrl::fromLocalFile(
+            qmlFilePath(expectation.fileName)));
+
+        QCOMPARE(view.status(), QQuickView::Ready);
+        QQuickItem *rootItem = view.rootObject();
+        QVERIFY(rootItem != nullptr);
+        QCoreApplication::processEvents();
+
+        auto *actionBar = qobject_cast<QQuickItem *>(
+            findObjectWithProperty(
+                rootItem,
+                "objectName",
+                expectation.actionBarName));
+        QVERIFY2(
+            actionBar != nullptr,
+            expectation.actionBarName);
+
+        const QPointF actionBottomRight = actionBar->mapToItem(
+            rootItem,
+            QPointF(actionBar->width(), actionBar->height()));
+        QVERIFY2(
+            actionBottomRight.x() <= rootItem->width() + 1.0,
+            expectation.fileName);
+        QVERIFY2(
+            actionBottomRight.y() <= rootItem->height() + 1.0,
+            qPrintable(QString("%1 action bottom %2 exceeds root height %3")
+                           .arg(expectation.fileName)
+                           .arg(actionBottomRight.y())
+                           .arg(rootItem->height())));
+    }
 }
 
 int main(int argc, char *argv[])

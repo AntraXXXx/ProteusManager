@@ -37,6 +37,8 @@ qt_add_executable(DataBaseManager
     utils/dalfileexporter.h
     utils/codegenerationprofile.cpp
     utils/codegenerationprofile.h
+    utils/normalizationplanner.cpp
+    utils/normalizationplanner.h
     utils/sqloutputrecorder.cpp
     utils/sqloutputrecorder.h
 
@@ -72,6 +74,7 @@ qt_add_qml_module(DataBaseManager
         qml/NormalizationPage.qml
         qml/SchemaDiagramView.qml
         qml/SchemaTableNode.qml
+        qml/SettingHelpButton.qml
         SOURCES appcontroller.h appcontroller.cpp
 )
 
@@ -150,6 +153,11 @@ if(BUILD_TESTING)
     )
     target_link_libraries(DatabaseManagerTest PRIVATE
         Qt6::Sql
+    )
+
+    add_proteus_test(NormalizationPlannerTest
+        tests/normalizationplannertest.cpp
+        utils/normalizationplanner.cpp
     )
 
     add_proteus_test(SqlValidationTest

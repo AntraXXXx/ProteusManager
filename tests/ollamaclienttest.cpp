@@ -129,6 +129,7 @@ private slots:
     void fetchesModelsFromOllamaEndpoint();
     void cleansGeneratedSqlResponse();
     void routesNormalizationResponse();
+    void routesAssistantResponse();
     void reportsConnectionErrors();
 };
 
@@ -192,6 +193,29 @@ void OllamaClientTest::routesNormalizationResponse()
     QVERIFY(normalizationSpy.wait(2000));
     QCOMPARE(normalizationSpy.count(), 1);
     QCOMPARE(sqlSpy.count(), 0);
+}
+
+void OllamaClientTest::routesAssistantResponse()
+{
+    FakeOllamaServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+
+    OllamaClient client(server.baseUrl());
+    QSignalSpy assistantSpy(
+        &client,
+        &OllamaClient::assistantReceived);
+    QSignalSpy dalSpy(
+        &client,
+        &OllamaClient::dalReceived);
+
+    client.generate(
+        "agent-one",
+        "recommend an architecture",
+        OllamaClient::GenerateType::Assistant);
+
+    QVERIFY(assistantSpy.wait(2000));
+    QCOMPARE(assistantSpy.count(), 1);
+    QCOMPARE(dalSpy.count(), 0);
 }
 
 void OllamaClientTest::reportsConnectionErrors()

@@ -1,6 +1,7 @@
 #include <QtTest>
 
 #include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QUuid>
 #include <QVariantMap>
@@ -64,6 +65,7 @@ private slots:
     void buildsSchemaDiagramsWithRelations();
     void buildsLanguageNeutralNormalizationAnalysis();
     void detectsNumberedNormalizationEvidence();
+    void previewsGermanOrdersOnIsolatedCopy();
 };
 
 void DatabaseManagerTest::initTestCase()
@@ -418,6 +420,88 @@ void DatabaseManagerTest::detectsNumberedNormalizationEvidence()
         QVERIFY(manager.hasNormalizationEvidence());
         QVERIFY(manager.hasNormalizationEvidence(
             {"bestellungen_nicht_normalisiert"}));
+    }
+
+    removeConnection(connectionName);
+}
+
+void DatabaseManagerTest::previewsGermanOrdersOnIsolatedCopy()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const QString connectionName = createConnectionName();
+    const QString databasePath =
+        tempDir.filePath("orders-normalization.sqlite");
+
+    {
+        DatabaseManager manager;
+        QVERIFY(manager.openDatabase(connectionName, databasePath));
+        QVERIFY(manager.executeQuery(
+            "CREATE TABLE Bestellungen ("
+            "BestellungID INT, Bestelldatum DATE, "
+            "KundeName VARCHAR(100), KundeStrasse VARCHAR(100), "
+            "KundeStadt VARCHAR(50), KundePLZ VARCHAR(10), "
+            "ArtikelName VARCHAR(100), ArtikelKategorie VARCHAR(50), "
+            "ArtikelPreis DECIMAL(10, 2), BestellteMenge INT, "
+            "GesamtPositionspreis DECIMAL(10, 2));"
+            "INSERT INTO Bestellungen VALUES "
+            "(1, '2026-07-15', 'Max Mustermann', 'Hauptstrasse 1', "
+            "'Hannover', '30159', 'Laptop', 'Elektronik', 1200.00, 1, 1200.00),"
+            "(2, '2026-07-16', 'Anna Schmidt', 'Nebenstrasse 2', "
+            "'Berlin', '10115', 'Kaffeemaschine', 'Haushalt', 150.00, 2, 300.00),"
+            "(2, '2026-07-16', 'Anna Schmidt', 'Nebenstrasse 2', "
+            "'Berlin', '10115', 'Kaffeebohnen', 'Kueche', 12.50, 5, 62.50);"));
+
+        const QVariantList beforeSchema =
+            manager.buildSchemaDiagram();
+        QCOMPARE(beforeSchema.size(), 1);
+
+        QSqlDatabase sourceDb =
+            QSqlDatabase::database(connectionName);
+        QSqlQuery rowCountQuery(
+            "SELECT COUNT(*) FROM Bestellungen",
+            sourceDb);
+        QVERIFY(rowCountQuery.next());
+        QCOMPARE(rowCountQuery.value(0).toInt(), 3);
+        rowCountQuery.finish();
+
+        const QString migration =
+            "CREATE TABLE Bestellung_1NF ("
+            "BestellungID INT, Bestelldatum DATE, "
+            "KundeName VARCHAR(100), ArtikelName VARCHAR(100), "
+            "BestellteMenge INT);"
+            "INSERT INTO Bestellung_1NF "
+            "SELECT BestellungID, Bestelldatum, KundeName, "
+            "ArtikelName, BestellteMenge FROM Bestellungen;";
+
+        QVERIFY2(
+            manager.validateMigrationPreview(migration),
+            qPrintable(manager.lastError()));
+        QVERIFY(manager.tableExists("Bestellungen"));
+        QVERIFY(!manager.tableExists("Bestellung_1NF"));
+        QCOMPARE(manager.buildSchemaDiagram(), beforeSchema);
+
+        QSqlQuery preservedRows(
+            "SELECT COUNT(*) FROM Bestellungen",
+            sourceDb);
+        QVERIFY(preservedRows.next());
+        QCOMPARE(preservedRows.value(0).toInt(), 3);
+        preservedRows.finish();
+
+        const QString failingMigration =
+            "CREATE TABLE Broken_1NF (id INT);"
+            "INSERT INTO Broken_1NF "
+            "SELECT MissingColumn FROM Bestellungen;";
+        QVERIFY(!manager.validateMigrationPreview(failingMigration));
+        QVERIFY(manager.tableExists("Bestellungen"));
+        QVERIFY(!manager.tableExists("Broken_1NF"));
+
+        QSqlQuery rowsAfterFailure(
+            "SELECT COUNT(*) FROM Bestellungen",
+            sourceDb);
+        QVERIFY(rowsAfterFailure.next());
+        QCOMPARE(rowsAfterFailure.value(0).toInt(), 3);
     }
 
     removeConnection(connectionName);
