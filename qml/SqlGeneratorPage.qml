@@ -105,6 +105,11 @@ Page {
                         }
                     }
 
+                    SettingHelpButton {
+                        objectName: "classesFolderHelpButton"
+                        helpText: "Chooses the source folder scanned for classes. Only readable source files are used to build the SQL schema prompt."
+                    }
+
                      // Connections {
                      //     target: appController
 
@@ -137,10 +142,22 @@ Page {
                     font.bold: true
                 }
                 GroupBox {
-                    CheckBox {
+                    Layout.fillWidth: true
+
+                    RowLayout {
+                        anchors.fill: parent
+
+                        CheckBox {
                         id: auditFieldsCheckBox
                         text: "Add audit fields (createdAt, updatedAt)"
                         font.pixelSize: 16
+                            Layout.fillWidth: true
+                        }
+
+                        SettingHelpButton {
+                            objectName: "auditFieldsHelpButton"
+                            helpText: "Adds creation and update timestamps for traceability. This supports audits but does not replace access control."
+                        }
                     }
                 }
             }

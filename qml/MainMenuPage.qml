@@ -81,15 +81,25 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            ComboBox {
-                                id: comboBox_CodeLanguage
+                            RowLayout {
                                 Layout.fillWidth: true
-                                Layout.preferredWidth: 300
-                                font.pixelSize: 16
-                                model: appController.codeLanguages()
+                                spacing: 8
 
-                                onCurrentIndexChanged: {
-                                    appController.setSelectedLanguage(currentIndex)
+                                ComboBox {
+                                    id: comboBox_CodeLanguage
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 300
+                                    font.pixelSize: 16
+                                    model: appController.codeLanguages()
+
+                                    onCurrentIndexChanged: {
+                                        appController.setSelectedLanguage(currentIndex)
+                                    }
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "languageHelpButton"
+                                    helpText: "Chooses the target language for generated application code, file names and database access patterns."
                                 }
                             }
 
@@ -98,18 +108,28 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            ComboBox {
-                                id: comboBox_AiModell
+                            RowLayout {
                                 Layout.fillWidth: true
-                                Layout.preferredWidth: 300
-                                font.pixelSize: 16
-                                enabled: appController.ollamaRunning && count > 0
-                                model: appController.availableModels
+                                spacing: 8
 
-                                onCurrentTextChanged: {
-                                    if (currentText.length > 0) {
-                                        appController.setSelectedModel(currentText)
+                                ComboBox {
+                                    id: comboBox_AiModell
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 300
+                                    font.pixelSize: 16
+                                    enabled: appController.ollamaRunning && count > 0
+                                    model: appController.availableModels
+
+                                    onCurrentTextChanged: {
+                                        if (currentText.length > 0) {
+                                            appController.setSelectedModel(currentText)
+                                        }
                                     }
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "aiModelHelpButton"
+                                    helpText: "Selects the installed Ollama model used for generation. A suitable model improves structured, valid output."
                                 }
                             }
 
@@ -149,6 +169,11 @@ Page {
                                         }
                                     }
                                 }
+
+                                SettingHelpButton {
+                                    objectName: "ollamaEndpointHelpButton"
+                                    helpText: "Sets the Ollama API address. Keep localhost for a private local model or use only a trusted secured endpoint."
+                                }
                             }
 
                             Label {
@@ -182,12 +207,26 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            Switch {
-                                checked: isLocalDatabase
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
 
-                                onCheckedChanged: {
-                                    isLocalDatabase = checked
-                                    appController.setIsLocalDatabase(checked)
+                                Switch {
+                                    checked: isLocalDatabase
+
+                                    onCheckedChanged: {
+                                        isLocalDatabase = checked
+                                        appController.setIsLocalDatabase(checked)
+                                    }
+                                }
+
+                                Item {
+                                    Layout.fillWidth: true
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "databaseModeHelpButton"
+                                    helpText: "Uses a database file on this computer. Turn it off to connect to a database server over the network."
                                 }
                             }
                         }
@@ -236,32 +275,39 @@ Page {
                             }
                         }
 
-                        Button {
-                            text: "Add"
-                            font.pixelSize: 16
-                            Layout.preferredWidth: 90
-                            Layout.preferredHeight: 42
-                                Layout.fillWidth: mainMenuPage.width < 680
-
-                            onClicked: {
-                                fileDialog.open()
-                            }
+                        Label {
+                            text: "Database File:"
+                            font.pixelSize: 18
                         }
 
-                        TextField {
-                            id: lineEdit_localdatabasepath
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
 
+                            TextField {
+                                id: lineEdit_localdatabasepath
                                 Layout.fillWidth: true
-                            Layout.preferredHeight: 35
-                            Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredHeight: 40
+                                font.pixelSize: 16
+                                leftPadding: 14
+                                horizontalAlignment: TextInput.AlignLeft
+                                verticalAlignment: TextInput.AlignVCenter
+                                placeholderText: "Select local database file..."
+                            }
 
-                            font.pixelSize: 16
-                            leftPadding: 18
+                            Button {
+                                text: "Browse"
+                                font.pixelSize: 15
+                                Layout.preferredWidth: 90
+                                Layout.preferredHeight: 40
 
-                            horizontalAlignment: TextInput.AlignLeft
-                            verticalAlignment: TextInput.AlignVCenter
+                                onClicked: fileDialog.open()
+                            }
 
-                            placeholderText: "Select local database file..."
+                            SettingHelpButton {
+                                objectName: "localDatabasePathHelpButton"
+                                helpText: "Chooses the local database file. The connection uses this file directly, so select a backup before risky operations."
+                            }
                         }
 
                         Connections {
@@ -286,11 +332,21 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            ComboBox {
-                                id: comboBox_DatabaseDriver
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                model: appController.databaseDriverNames()
+                                spacing: 8
+
+                                ComboBox {
+                                    id: comboBox_DatabaseDriver
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    model: appController.databaseDriverNames()
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "databaseDriverHelpButton"
+                                    helpText: "Chooses the server driver and SQL dialect so connection and generated commands match the database system."
+                                }
                             }
 
                             Label {
@@ -298,11 +354,21 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_DataBaseAddress
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "Database name"
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_DataBaseAddress
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "Database name"
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "databaseNameHelpButton"
+                                    helpText: "Names the database on the server. This keeps the connection scoped to the intended data store."
+                                }
                             }
 
                             Label {
@@ -310,11 +376,21 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_HostName
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "Host name"
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_HostName
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "Host name"
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "hostNameHelpButton"
+                                    helpText: "Sets the trusted server name or IP address. Verify it to avoid sending credentials to the wrong host."
+                                }
                             }
 
                             Label {
@@ -322,12 +398,22 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_Port
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "Optional, for example 3306 or 5432"
-                                inputMethodHints: Qt.ImhDigitsOnly
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_Port
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "Optional, for example 3306 or 5432"
+                                    inputMethodHints: Qt.ImhDigitsOnly
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "portHelpButton"
+                                    helpText: "Sets the server port. Leave it empty for the driver default or enter the port configured by the administrator."
+                                }
                             }
 
                             Label {
@@ -335,11 +421,21 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_UserName
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "User name"
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_UserName
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "User name"
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "userNameHelpButton"
+                                    helpText: "Uses this database account. Prefer a dedicated account with only the permissions ProteusManager needs."
+                                }
                             }
 
                             Label {
@@ -347,12 +443,22 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_Password
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "Password"
-                                echoMode: TextInput.Password
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_Password
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "Password"
+                                    echoMode: TextInput.Password
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "passwordHelpButton"
+                                    helpText: "Authenticates the database account. The value stays masked; use a unique secret and encrypted server connection."
+                                }
                             }
                         }
             }

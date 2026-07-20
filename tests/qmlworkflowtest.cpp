@@ -459,6 +459,32 @@ void QmlWorkflowTest::loadsMainMenuPage()
             "text",
             "AI Status:")
         != nullptr);
+
+    const QStringList helpButtons = {
+        "languageHelpButton",
+        "aiModelHelpButton",
+        "ollamaEndpointHelpButton",
+        "databaseModeHelpButton",
+        "localDatabasePathHelpButton",
+        "databaseDriverHelpButton",
+        "databaseNameHelpButton",
+        "hostNameHelpButton",
+        "portHelpButton",
+        "userNameHelpButton",
+        "passwordHelpButton"
+    };
+
+    for (const QString& objectName : helpButtons) {
+        QObject *helpButton = findObjectWithProperty(
+            page.get(),
+            "objectName",
+            objectName);
+        QVERIFY2(
+            helpButton != nullptr,
+            qPrintable("Missing contextual help: " + objectName));
+        QVERIFY(!helpButton->property("helpText")
+                     .toString().trimmed().isEmpty());
+    }
 }
 
 void QmlWorkflowTest::loadsNormalizationPage()
@@ -555,6 +581,23 @@ void QmlWorkflowTest::sqlPageDisplaysGeneratedSql()
             "Generated SQL will appear here...");
 
     QVERIFY(outputArea != nullptr);
+
+    const QStringList helpButtons = {
+        "classesFolderHelpButton",
+        "auditFieldsHelpButton"
+    };
+
+    for (const QString& objectName : helpButtons) {
+        QObject *helpButton = findObjectWithProperty(
+            page.get(),
+            "objectName",
+            objectName);
+        QVERIFY2(
+            helpButton != nullptr,
+            qPrintable("Missing contextual help: " + objectName));
+        QVERIFY(!helpButton->property("helpText")
+                     .toString().trimmed().isEmpty());
+    }
 
     const QString sql =
         "CREATE TABLE Customer (id INTEGER PRIMARY KEY);";
