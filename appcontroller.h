@@ -17,6 +17,7 @@
 #include "database/databasemanager.h"
 #include "utils/codegenerationprofile.h"
 #include "utils/dalfileexporter.h"
+#include "utils/normalizationplanner.h"
 #include "utils/programminglanguage.h"
 #include "utils/sqloutputrecorder.h"
 #include "windows/tablegenerator.h"
@@ -112,6 +113,7 @@ public:
         const QString& userName,
         const QString& password);
     Q_INVOKABLE void onGenerateNormalization(const QString& form);
+    Q_INVOKABLE bool refreshNormalizationDiagrams();
     Q_INVOKABLE QString onApplyNormalization();
     Q_INVOKABLE QString onResetNormalization();
     Q_INVOKABLE QString onAdvanceNormalization();
@@ -157,6 +159,8 @@ private:
     int normalizationVersionIndex(const QString& form) const;
     QStringList activeNormalizationTables() const;
     QStringList sourceNormalizationTables() const;
+    int storeNormalizationVersion(
+        const NormalizationVersion& version);
     void prepareNormalizationVersion(
         int versionIndex,
         const QString& actionName);
@@ -184,6 +188,7 @@ private:
     QVariantList m_normalizationAfterSchema;
     QVariantMap m_codeGenerationOptions;
     QStringList m_lastCodeGenerationTables;
+    QStringList m_normalizationInputTables;
     QVector<NormalizationVersion> m_normalizationHistory;
 
     OllamaClient *m_ollamaClient;
