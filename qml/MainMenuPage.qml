@@ -8,30 +8,34 @@ Page {
     property StackView appStack
     property bool isLocalDatabase: appController.isLocalDatabase
     property bool databaseConnected: appController.databaseConnected
+    readonly property bool compactLayout: width < 720
 
     background: Rectangle {
         color: "#eef2f7"
     }
 
-    ColumnLayout {
+    Item {
         anchors.fill: parent
-        anchors.margins: 24
-        spacing: 16
+        anchors.margins: compactLayout ? 12 : 24
 
         ScrollView {
             id: mainMenuScroll
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: mainActionBar.top
+            anchors.bottomMargin: 12
             contentWidth: availableWidth
             clip: true
 
             ColumnLayout {
-                width: mainMenuScroll.availableWidth
-                spacing: 18
+                width: Math.min(mainMenuScroll.availableWidth, 1080)
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 14
 
                 Label {
                     text: "Proteus Manager"
-                    font.pixelSize: 40
+                    font.pixelSize: 34
                     font.bold: true
                     color: "#101828"
                     horizontalAlignment: Text.AlignHCenter
@@ -41,7 +45,7 @@ Page {
 
                 Label {
                     text: "AI-assisted database schema and code generation"
-                    font.pixelSize: 17
+                    font.pixelSize: 15
                     color: "#667085"
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -50,30 +54,30 @@ Page {
 
                 Frame {
                     Layout.fillWidth: true
-                    padding: 22
+                    padding: compactLayout ? 14 : 18
 
                     background: Rectangle {
                         color: "white"
-                        radius: 18
+                        radius: 8
                         border.color: "#d0d5dd"
                     }
 
                     ColumnLayout {
-                        spacing: 18
+                        spacing: 14
                         anchors.fill: parent
 
                         Label {
                             text: "Project Settings"
-                            font.pixelSize: 24
+                            font.pixelSize: 20
                             font.bold: true
                             color: "#101828"
                             Layout.fillWidth: true
                         }
 
                         GridLayout {
-                            columns: mainMenuPage.width < 760 ? 1 : 2
-                            columnSpacing: 26
-                            rowSpacing: 18
+                            columns: compactLayout ? 1 : 2
+                            columnSpacing: 20
+                            rowSpacing: 14
                             Layout.fillWidth: true
 
                             Label {
@@ -81,15 +85,25 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            ComboBox {
-                                id: comboBox_CodeLanguage
+                            RowLayout {
                                 Layout.fillWidth: true
-                                Layout.preferredWidth: 300
-                                font.pixelSize: 16
-                                model: appController.codeLanguages()
+                                spacing: 8
 
-                                onCurrentIndexChanged: {
-                                    appController.setSelectedLanguage(currentIndex)
+                                ComboBox {
+                                    id: comboBox_CodeLanguage
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 300
+                                    font.pixelSize: 16
+                                    model: appController.codeLanguages()
+
+                                    onCurrentIndexChanged: {
+                                        appController.setSelectedLanguage(currentIndex)
+                                    }
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "languageHelpButton"
+                                    helpText: "Chooses the target language for generated application code, file names and database access patterns."
                                 }
                             }
 
@@ -98,18 +112,28 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            ComboBox {
-                                id: comboBox_AiModell
+                            RowLayout {
                                 Layout.fillWidth: true
-                                Layout.preferredWidth: 300
-                                font.pixelSize: 16
-                                enabled: appController.ollamaRunning && count > 0
-                                model: appController.availableModels
+                                spacing: 8
 
-                                onCurrentTextChanged: {
-                                    if (currentText.length > 0) {
-                                        appController.setSelectedModel(currentText)
+                                ComboBox {
+                                    id: comboBox_AiModell
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 300
+                                    font.pixelSize: 16
+                                    enabled: appController.ollamaRunning && count > 0
+                                    model: appController.availableModels
+
+                                    onCurrentTextChanged: {
+                                        if (currentText.length > 0) {
+                                            appController.setSelectedModel(currentText)
+                                        }
                                     }
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "aiModelHelpButton"
+                                    helpText: "Selects the installed Ollama model used for generation. A suitable model improves structured, valid output."
                                 }
                             }
 
@@ -149,6 +173,11 @@ Page {
                                         }
                                     }
                                 }
+
+                                SettingHelpButton {
+                                    objectName: "ollamaEndpointHelpButton"
+                                    helpText: "Sets the Ollama API address. Keep localhost for a private local model or use only a trusted secured endpoint."
+                                }
                             }
 
                             Label {
@@ -156,12 +185,24 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            Label {
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Rectangle {
+                                    Layout.preferredWidth: 9
+                                    Layout.preferredHeight: 9
+                                    radius: 5
+                                    color: appController.aiEnvironmentReady ? "#16a34a" : "#d97706"
+                                }
+
+                                Label {
                                 text: appController.aiConnectionStatus
                                 font.pixelSize: 16
                                 color: appController.aiEnvironmentReady ? "#15803d" : "#b45309"
                                 wrapMode: Text.WordWrap
                                 Layout.fillWidth: true
+                                }
                             }
 
                             Label {
@@ -182,12 +223,26 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            Switch {
-                                checked: isLocalDatabase
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
 
-                                onCheckedChanged: {
-                                    isLocalDatabase = checked
-                                    appController.setIsLocalDatabase(checked)
+                                Switch {
+                                    checked: isLocalDatabase
+
+                                    onCheckedChanged: {
+                                        isLocalDatabase = checked
+                                        appController.setIsLocalDatabase(checked)
+                                    }
+                                }
+
+                                Item {
+                                    Layout.fillWidth: true
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "databaseModeHelpButton"
+                                    helpText: "Uses a database file on this computer. Turn it off to connect to a database server over the network."
                                 }
                             }
                         }
@@ -196,11 +251,11 @@ Page {
 
                 Frame {
                     Layout.fillWidth: true
-                    padding: 22
+                    padding: compactLayout ? 14 : 18
 
                     background: Rectangle {
                         color: "white"
-                        radius: 18
+                        radius: 8
                         border.color: "#d0d5dd"
                     }
 
@@ -208,18 +263,35 @@ Page {
                         spacing: 16
                         anchors.fill: parent
 
-                        Label {
-                            text: isLocalDatabase ? "Local Database" : "Online Database"
-                            font.pixelSize: 24
-                            font.bold: true
-                            color: "#101828"
+                        RowLayout {
                             Layout.fillWidth: true
+
+                            Label {
+                                text: isLocalDatabase ? "Local Database" : "Online Database"
+                                font.pixelSize: 20
+                                font.bold: true
+                                color: "#101828"
+                                Layout.fillWidth: true
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 9
+                                Layout.preferredHeight: 9
+                                radius: 5
+                                color: databaseConnected ? "#16a34a" : "#98a2b3"
+                            }
+
+                            Label {
+                                text: databaseConnected ? "Connected" : "Not connected"
+                                font.pixelSize: 14
+                                color: databaseConnected ? "#15803d" : "#667085"
+                            }
                         }
 
                         GridLayout {
                         visible: isLocalDatabase
                         Layout.fillWidth: true
-                            columns: mainMenuPage.width < 680 ? 1 : 2
+                            columns: compactLayout ? 1 : 2
                             columnSpacing: 12
                             rowSpacing: 12
 
@@ -236,32 +308,39 @@ Page {
                             }
                         }
 
-                        Button {
-                            text: "Add"
-                            font.pixelSize: 16
-                            Layout.preferredWidth: 90
-                            Layout.preferredHeight: 42
-                                Layout.fillWidth: mainMenuPage.width < 680
-
-                            onClicked: {
-                                fileDialog.open()
-                            }
+                        Label {
+                            text: "Database File:"
+                            font.pixelSize: 18
                         }
 
-                        TextField {
-                            id: lineEdit_localdatabasepath
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
 
+                            TextField {
+                                id: lineEdit_localdatabasepath
                                 Layout.fillWidth: true
-                            Layout.preferredHeight: 35
-                            Layout.alignment: Qt.AlignHCenter
+                                Layout.preferredHeight: 40
+                                font.pixelSize: 16
+                                leftPadding: 14
+                                horizontalAlignment: TextInput.AlignLeft
+                                verticalAlignment: TextInput.AlignVCenter
+                                placeholderText: "Select local database file..."
+                            }
 
-                            font.pixelSize: 16
-                            leftPadding: 18
+                            Button {
+                                text: "Browse"
+                                font.pixelSize: 15
+                                Layout.preferredWidth: 90
+                                Layout.preferredHeight: 40
 
-                            horizontalAlignment: TextInput.AlignLeft
-                            verticalAlignment: TextInput.AlignVCenter
+                                onClicked: fileDialog.open()
+                            }
 
-                            placeholderText: "Select local database file..."
+                            SettingHelpButton {
+                                objectName: "localDatabasePathHelpButton"
+                                helpText: "Chooses the local database file. The connection uses this file directly, so select a backup before risky operations."
+                            }
                         }
 
                         Connections {
@@ -277,7 +356,7 @@ Page {
                         GridLayout {
                             visible: !isLocalDatabase
                             Layout.fillWidth: true
-                            columns: mainMenuPage.width < 680 ? 1 : 2
+                            columns: compactLayout ? 1 : 2
                             columnSpacing: 20
                             rowSpacing: 12
 
@@ -286,11 +365,21 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            ComboBox {
-                                id: comboBox_DatabaseDriver
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                model: appController.databaseDriverNames()
+                                spacing: 8
+
+                                ComboBox {
+                                    id: comboBox_DatabaseDriver
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    model: appController.databaseDriverNames()
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "databaseDriverHelpButton"
+                                    helpText: "Chooses the server driver and SQL dialect so connection and generated commands match the database system."
+                                }
                             }
 
                             Label {
@@ -298,11 +387,21 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_DataBaseAddress
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "Database name"
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_DataBaseAddress
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "Database name"
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "databaseNameHelpButton"
+                                    helpText: "Names the database on the server. This keeps the connection scoped to the intended data store."
+                                }
                             }
 
                             Label {
@@ -310,11 +409,21 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_HostName
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "Host name"
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_HostName
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "Host name"
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "hostNameHelpButton"
+                                    helpText: "Sets the trusted server name or IP address. Verify it to avoid sending credentials to the wrong host."
+                                }
                             }
 
                             Label {
@@ -322,12 +431,22 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_Port
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "Optional, for example 3306 or 5432"
-                                inputMethodHints: Qt.ImhDigitsOnly
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_Port
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "Optional, for example 3306 or 5432"
+                                    inputMethodHints: Qt.ImhDigitsOnly
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "portHelpButton"
+                                    helpText: "Sets the server port. Leave it empty for the driver default or enter the port configured by the administrator."
+                                }
                             }
 
                             Label {
@@ -335,11 +454,21 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_UserName
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "User name"
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_UserName
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "User name"
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "userNameHelpButton"
+                                    helpText: "Uses this database account. Prefer a dedicated account with only the permissions ProteusManager needs."
+                                }
                             }
 
                             Label {
@@ -347,12 +476,22 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            TextField {
-                                id: lineEdit_Password
+                            RowLayout {
                                 Layout.fillWidth: true
-                                font.pixelSize: 16
-                                placeholderText: "Password"
-                                echoMode: TextInput.Password
+                                spacing: 8
+
+                                TextField {
+                                    id: lineEdit_Password
+                                    Layout.fillWidth: true
+                                    font.pixelSize: 16
+                                    placeholderText: "Password"
+                                    echoMode: TextInput.Password
+                                }
+
+                                SettingHelpButton {
+                                    objectName: "passwordHelpButton"
+                                    helpText: "Authenticates the database account. The value stays masked; use a unique secret and encrypted server connection."
+                                }
                             }
                         }
             }
@@ -362,8 +501,11 @@ Page {
 
         GridLayout {
             id: mainActionBar
-            Layout.fillWidth: true
-            columns: mainMenuPage.width < 560 ? 1 : mainMenuPage.width < 860 ? 2 : 5
+            objectName: "mainActionBar"
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            columns: mainMenuPage.width < 560 ? 1 : mainMenuPage.width < 900 ? 2 : 5
             columnSpacing: 14
             rowSpacing: 10
 
