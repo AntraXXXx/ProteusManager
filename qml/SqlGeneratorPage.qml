@@ -7,52 +7,59 @@ Page {
     id: sqlGeneratorPage
     property StackView appStack
     title: "SQL Generator"
+    readonly property bool compactLayout: width < 700
 
     background: Rectangle {
         color: "#eef2f7"
     }
 
-    ColumnLayout {
+    Item {
         anchors.fill: parent
-        anchors.margins: 24
-        spacing: 16
+        anchors.margins: compactLayout ? 12 : 24
 
         Label {
+            id: sqlPageTitle
             text: "SQL Generator"
-            font.pixelSize: 36
+            font.pixelSize: 32
             font.bold: true
             color: "#101828"
-            Layout.alignment: Qt.AlignHCenter
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
         }
 
         ScrollView {
             id: sqlContentScroll
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            anchors.top: sqlPageTitle.bottom
+            anchors.topMargin: 12
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: sqlActionBar.top
+            anchors.bottomMargin: 12
             contentWidth: availableWidth
             clip: true
 
             ColumnLayout {
-                width: sqlContentScroll.availableWidth
-                spacing: 16
+                width: Math.min(sqlContentScroll.availableWidth, 1080)
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 14
 
                 Frame {
             Layout.fillWidth: true
-            padding: 24
+            padding: compactLayout ? 14 : 18
 
             background: Rectangle {
                 color: "white"
-                radius: 18
+                radius: 8
                 border.color: "#d0d5dd"
             }
 
             ColumnLayout {
                 anchors.fill: parent
-                  spacing: 14
+                  spacing: 12
 
                 Label {
-                    text: "Classes Source-Folder"
-                    font.pixelSize: 22
+                    text: "Classes Source Folder"
+                    font.pixelSize: 20
                     font.bold: true
                 }
 
@@ -75,8 +82,8 @@ Page {
                     }
 
                     Button {
-                        text: "Add"
-                        font.pixelSize: 16
+                        text: "Browse"
+                        font.pixelSize: 15
                         Layout.preferredWidth: 90
                         Layout.preferredHeight: 42
 
@@ -100,7 +107,7 @@ Page {
 
                         placeholderText: "Classes folder..."
 
-                        onTextChanged: {
+                        onEditingFinished: {
                             appController.setClassesFolderPath(text)
                         }
                     }
@@ -124,11 +131,11 @@ Page {
 
                 Frame {
             Layout.fillWidth: true
-            padding: 20
+            padding: compactLayout ? 14 : 18
 
             background: Rectangle {
                 color: "white"
-                radius: 18
+                radius: 8
                 border.color: "#d0d5dd"
             }
 
@@ -137,27 +144,23 @@ Page {
                 spacing: 12
 
                 Label {
-                    text: "SQL Settings:"
-                    font.pixelSize: 22
+                    text: "SQL Settings"
+                    font.pixelSize: 20
                     font.bold: true
                 }
-                GroupBox {
+                RowLayout {
                     Layout.fillWidth: true
 
-                    RowLayout {
-                        anchors.fill: parent
-
-                        CheckBox {
+                    CheckBox {
                         id: auditFieldsCheckBox
                         text: "Add audit fields (createdAt, updatedAt)"
                         font.pixelSize: 16
-                            Layout.fillWidth: true
-                        }
+                        Layout.fillWidth: true
+                    }
 
-                        SettingHelpButton {
-                            objectName: "auditFieldsHelpButton"
-                            helpText: "Adds creation and update timestamps for traceability. This supports audits but does not replace access control."
-                        }
+                    SettingHelpButton {
+                        objectName: "auditFieldsHelpButton"
+                        helpText: "Adds creation and update timestamps for traceability. This supports audits but does not replace access control."
                     }
                 }
             }
@@ -166,11 +169,11 @@ Page {
                 Frame {
             Layout.fillWidth: true
                     Layout.preferredHeight: 340
-            padding: 24
+            padding: compactLayout ? 14 : 18
 
             background: Rectangle {
                 color: "white"
-                radius: 18
+                radius: 8
                 border.color: "#d0d5dd"
             }
             ColumnLayout {
@@ -179,7 +182,7 @@ Page {
 
                 Label {
                     text: "Generated SQL"
-                    font.pixelSize: 22
+                    font.pixelSize: 20
                     font.bold: true
                 }
                 ScrollView {
@@ -203,13 +206,12 @@ Page {
             }
         }
 
-        ProgressBar {
-            Layout.fillWidth: true
-            visible: false
-        }
-
         GridLayout {
-            Layout.fillWidth: true
+            id: sqlActionBar
+            objectName: "sqlActionBar"
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
             columns: sqlGeneratorPage.width < 560 ? 1 : sqlGeneratorPage.width < 860 ? 2 : 4
             columnSpacing: 14
             rowSpacing: 10

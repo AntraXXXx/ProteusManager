@@ -5,6 +5,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include <QQuickView>
 #include <QSet>
 #include <QVariantList>
 #include <QVariantMap>
@@ -426,6 +427,7 @@ private slots:
     void loadsNormalizationPage();
     void sqlPageDisplaysGeneratedSql();
     void dalPageDisplaysGeneratedCode();
+    void compactSettingsPagesKeepActionsVisible();
 };
 
 void QmlWorkflowTest::loadsMainMenuPage()
@@ -485,6 +487,7 @@ void QmlWorkflowTest::loadsMainMenuPage()
         QVERIFY(!helpButton->property("helpText")
                      .toString().trimmed().isEmpty());
     }
+
 }
 
 void QmlWorkflowTest::loadsNormalizationPage()
@@ -659,6 +662,58 @@ void QmlWorkflowTest::dalPageDisplaysGeneratedCode()
     QCOMPARE(
         outputArea->property("text").toString(),
         dal);
+}
+
+void QmlWorkflowTest::compactSettingsPagesKeepActionsVisible()
+{
+    struct PageExpectation {
+        const char *fileName;
+        const char *actionBarName;
+    };
+
+    const PageExpectation pages[] = {
+        {"MainMenuPage.qml", "mainActionBar"},
+        {"SqlGeneratorPage.qml", "sqlActionBar"}
+    };
+
+    for (const PageExpectation& expectation : pages) {
+        FakeAppController controller;
+        QQuickView view;
+        view.rootContext()->setContextProperty(
+            "appController",
+            &controller);
+        view.setResizeMode(QQuickView::SizeRootObjectToView);
+        view.resize(560, 700);
+        view.setSource(QUrl::fromLocalFile(
+            qmlFilePath(expectation.fileName)));
+
+        QCOMPARE(view.status(), QQuickView::Ready);
+        QQuickItem *rootItem = view.rootObject();
+        QVERIFY(rootItem != nullptr);
+        QCoreApplication::processEvents();
+
+        auto *actionBar = qobject_cast<QQuickItem *>(
+            findObjectWithProperty(
+                rootItem,
+                "objectName",
+                expectation.actionBarName));
+        QVERIFY2(
+            actionBar != nullptr,
+            expectation.actionBarName);
+
+        const QPointF actionBottomRight = actionBar->mapToItem(
+            rootItem,
+            QPointF(actionBar->width(), actionBar->height()));
+        QVERIFY2(
+            actionBottomRight.x() <= rootItem->width() + 1.0,
+            expectation.fileName);
+        QVERIFY2(
+            actionBottomRight.y() <= rootItem->height() + 1.0,
+            qPrintable(QString("%1 action bottom %2 exceeds root height %3")
+                           .arg(expectation.fileName)
+                           .arg(actionBottomRight.y())
+                           .arg(rootItem->height())));
+    }
 }
 
 int main(int argc, char *argv[])

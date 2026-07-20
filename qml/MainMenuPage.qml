@@ -8,30 +8,34 @@ Page {
     property StackView appStack
     property bool isLocalDatabase: appController.isLocalDatabase
     property bool databaseConnected: appController.databaseConnected
+    readonly property bool compactLayout: width < 720
 
     background: Rectangle {
         color: "#eef2f7"
     }
 
-    ColumnLayout {
+    Item {
         anchors.fill: parent
-        anchors.margins: 24
-        spacing: 16
+        anchors.margins: compactLayout ? 12 : 24
 
         ScrollView {
             id: mainMenuScroll
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: mainActionBar.top
+            anchors.bottomMargin: 12
             contentWidth: availableWidth
             clip: true
 
             ColumnLayout {
-                width: mainMenuScroll.availableWidth
-                spacing: 18
+                width: Math.min(mainMenuScroll.availableWidth, 1080)
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 14
 
                 Label {
                     text: "Proteus Manager"
-                    font.pixelSize: 40
+                    font.pixelSize: 34
                     font.bold: true
                     color: "#101828"
                     horizontalAlignment: Text.AlignHCenter
@@ -41,7 +45,7 @@ Page {
 
                 Label {
                     text: "AI-assisted database schema and code generation"
-                    font.pixelSize: 17
+                    font.pixelSize: 15
                     color: "#667085"
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
@@ -50,30 +54,30 @@ Page {
 
                 Frame {
                     Layout.fillWidth: true
-                    padding: 22
+                    padding: compactLayout ? 14 : 18
 
                     background: Rectangle {
                         color: "white"
-                        radius: 18
+                        radius: 8
                         border.color: "#d0d5dd"
                     }
 
                     ColumnLayout {
-                        spacing: 18
+                        spacing: 14
                         anchors.fill: parent
 
                         Label {
                             text: "Project Settings"
-                            font.pixelSize: 24
+                            font.pixelSize: 20
                             font.bold: true
                             color: "#101828"
                             Layout.fillWidth: true
                         }
 
                         GridLayout {
-                            columns: mainMenuPage.width < 760 ? 1 : 2
-                            columnSpacing: 26
-                            rowSpacing: 18
+                            columns: compactLayout ? 1 : 2
+                            columnSpacing: 20
+                            rowSpacing: 14
                             Layout.fillWidth: true
 
                             Label {
@@ -181,12 +185,24 @@ Page {
                                 font.pixelSize: 18
                             }
 
-                            Label {
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Rectangle {
+                                    Layout.preferredWidth: 9
+                                    Layout.preferredHeight: 9
+                                    radius: 5
+                                    color: appController.aiEnvironmentReady ? "#16a34a" : "#d97706"
+                                }
+
+                                Label {
                                 text: appController.aiConnectionStatus
                                 font.pixelSize: 16
                                 color: appController.aiEnvironmentReady ? "#15803d" : "#b45309"
                                 wrapMode: Text.WordWrap
                                 Layout.fillWidth: true
+                                }
                             }
 
                             Label {
@@ -235,11 +251,11 @@ Page {
 
                 Frame {
                     Layout.fillWidth: true
-                    padding: 22
+                    padding: compactLayout ? 14 : 18
 
                     background: Rectangle {
                         color: "white"
-                        radius: 18
+                        radius: 8
                         border.color: "#d0d5dd"
                     }
 
@@ -247,18 +263,35 @@ Page {
                         spacing: 16
                         anchors.fill: parent
 
-                        Label {
-                            text: isLocalDatabase ? "Local Database" : "Online Database"
-                            font.pixelSize: 24
-                            font.bold: true
-                            color: "#101828"
+                        RowLayout {
                             Layout.fillWidth: true
+
+                            Label {
+                                text: isLocalDatabase ? "Local Database" : "Online Database"
+                                font.pixelSize: 20
+                                font.bold: true
+                                color: "#101828"
+                                Layout.fillWidth: true
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 9
+                                Layout.preferredHeight: 9
+                                radius: 5
+                                color: databaseConnected ? "#16a34a" : "#98a2b3"
+                            }
+
+                            Label {
+                                text: databaseConnected ? "Connected" : "Not connected"
+                                font.pixelSize: 14
+                                color: databaseConnected ? "#15803d" : "#667085"
+                            }
                         }
 
                         GridLayout {
                         visible: isLocalDatabase
                         Layout.fillWidth: true
-                            columns: mainMenuPage.width < 680 ? 1 : 2
+                            columns: compactLayout ? 1 : 2
                             columnSpacing: 12
                             rowSpacing: 12
 
@@ -323,7 +356,7 @@ Page {
                         GridLayout {
                             visible: !isLocalDatabase
                             Layout.fillWidth: true
-                            columns: mainMenuPage.width < 680 ? 1 : 2
+                            columns: compactLayout ? 1 : 2
                             columnSpacing: 20
                             rowSpacing: 12
 
@@ -468,8 +501,11 @@ Page {
 
         GridLayout {
             id: mainActionBar
-            Layout.fillWidth: true
-            columns: mainMenuPage.width < 560 ? 1 : mainMenuPage.width < 860 ? 2 : 5
+            objectName: "mainActionBar"
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            columns: mainMenuPage.width < 560 ? 1 : mainMenuPage.width < 900 ? 2 : 5
             columnSpacing: 14
             rowSpacing: 10
 
