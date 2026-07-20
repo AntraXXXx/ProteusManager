@@ -5,6 +5,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include <QQuickView>
 #include <QSet>
 #include <QVariantList>
 #include <QVariantMap>
@@ -170,6 +171,12 @@ public:
             {"proposed", true}
         });
         emit normalizationChanged();
+    }
+
+    Q_INVOKABLE bool refreshNormalizationDiagrams()
+    {
+        emit normalizationChanged();
+        return !m_normalizationBeforeSchema.isEmpty();
     }
 
     Q_INVOKABLE QString onApplyNormalization()
@@ -463,71 +470,97 @@ void QmlWorkflowTest::loadsMainMenuPage()
 
 void QmlWorkflowTest::loadsNormalizationPage()
 {
-    QQmlEngine engine;
     FakeAppController controller;
-    engine.rootContext()->setContextProperty(
+    QQuickView view;
+    view.rootContext()->setContextProperty(
         "appController",
         &controller);
+    view.setSource(QUrl::fromLocalFile(
+        qmlFilePath("NormalizationPage.qml")));
+    QCOMPARE(view.status(), QQuickView::Ready);
+    view.resize(1100, 760);
+    view.show();
+    QCoreApplication::processEvents();
 
-    QQmlComponent component(
-        &engine,
-        QUrl::fromLocalFile(
-            qmlFilePath("NormalizationPage.qml")));
-
-    std::unique_ptr<QObject> page(component.create());
-
-    QVERIFY2(
-        page != nullptr,
-        qPrintable(component.errorString()));
+    QObject *pageObject = view.rootObject();
+    QVERIFY(pageObject != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Database Normalization")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "5NF")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Migration Preview")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Open Before Diagram")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Open After Diagram")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Previous Level")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
-            page.get(),
+            pageObject,
             "text",
             "Next Level")
         != nullptr);
+
+    QObject *beforeWindow =
+        findObjectWithProperty(
+            pageObject,
+            "objectName",
+            "beforeDiagramWindow");
+    QVERIFY(beforeWindow != nullptr);
+    QVERIFY(!beforeWindow->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(
+        pageObject,
+        "openBeforeDiagram"));
+    QCoreApplication::processEvents();
+    QVERIFY(beforeWindow->property("visible").toBool());
+    beforeWindow->setProperty("visible", false);
+
+    controller.onGenerateNormalization("1NF");
+    QObject *afterWindow =
+        findObjectWithProperty(
+            pageObject,
+            "objectName",
+            "afterDiagramWindow");
+    QVERIFY(afterWindow != nullptr);
+    QVERIFY(QMetaObject::invokeMethod(
+        pageObject,
+        "openAfterDiagram"));
+    QCoreApplication::processEvents();
+    QVERIFY(afterWindow->property("visible").toBool());
+    afterWindow->setProperty("visible", false);
 }
 
 void QmlWorkflowTest::sqlPageDisplaysGeneratedSql()
