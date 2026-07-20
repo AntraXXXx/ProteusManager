@@ -3,6 +3,14 @@
 
 namespace
 {
+bool isValidIdentifier(const QString& value)
+{
+    static const QRegularExpression identifierPattern(
+        R"(^[A-Za-z_][A-Za-z0-9_]*$)");
+
+    return identifierPattern.match(value).hasMatch();
+}
+
 QString inferPythonValueType(const QString& value)
 {
     const QString trimmed =
@@ -66,6 +74,40 @@ QList<ParsedClass> ClassParser::parseClasses(
     default:
         return {};
     }
+}
+
+QList<ParsedClass> ClassParser::parseDatabaseClasses(
+    const QString& content,
+    ProgrammingLanguage::ProgrammingLanguageType language)
+{
+    const QList<ParsedClass> detectedClasses =
+        parseClasses(content, language);
+    QList<ParsedClass> databaseClasses;
+
+    for (const ParsedClass& detectedClass : detectedClasses)
+    {
+        if (!isValidIdentifier(detectedClass.name))
+            continue;
+
+        ParsedClass databaseClass;
+        databaseClass.name = detectedClass.name;
+
+        for (const ParsedAttribute& attribute : detectedClass.attributes)
+        {
+            if (!isValidIdentifier(attribute.name)
+                || attribute.type.trimmed().isEmpty())
+            {
+                continue;
+            }
+
+            databaseClass.attributes.append(attribute);
+        }
+
+        if (!databaseClass.attributes.isEmpty())
+            databaseClasses.append(databaseClass);
+    }
+
+    return databaseClasses;
 }
 
 QList<ParsedClass> ClassParser::parseCppClasses(const QString& content)

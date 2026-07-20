@@ -8,10 +8,11 @@ Page {
 
     property StackView appStack
     property bool assistantOpen: false
+    property bool advancedSettingsOpen: false
     readonly property var generationProfile: appController.codeGenerationCapabilities
     readonly property var layerSupport: generationProfile.layerSupport || ({})
 
-    title: appController.selectedLanguageName + " Code Generator"
+    title: appController.selectedLanguageName + " Secure Code Generator"
 
     function modelIndex(values, selectedValue) {
         if (!values)
@@ -35,6 +36,62 @@ Page {
         dataAccessPatternBox.currentIndex = modelIndex(
                     dataAccessPatternBox.model,
                     appController.codeGenerationOptions.dataAccessPattern)
+        generationScopeBox.currentIndex = detectedScope()
+    }
+
+    function supportedOptionEnabled(optionName, supportName) {
+        return layerSupport[supportName] !== true
+                || appController.codeGenerationOptions[optionName] === true
+    }
+
+    function supportedOptionDisabled(optionName, supportName) {
+        return layerSupport[supportName] !== true
+                || appController.codeGenerationOptions[optionName] !== true
+    }
+
+    function detectedScope() {
+        const secureAccess = supportedOptionEnabled("entity", "entity")
+                && supportedOptionEnabled("repository", "repository")
+                && supportedOptionDisabled("dto", "dto")
+                && supportedOptionDisabled("service", "service")
+                && supportedOptionDisabled("controller", "controller")
+                && supportedOptionDisabled("domainModel", "domainModel")
+
+        if (secureAccess)
+            return 0
+
+        const fullApplication = supportedOptionEnabled("entity", "entity")
+                && supportedOptionEnabled("dto", "dto")
+                && supportedOptionEnabled("repository", "repository")
+                && supportedOptionEnabled("service", "service")
+                && supportedOptionEnabled("controller", "controller")
+                && supportedOptionEnabled("domainModel", "domainModel")
+
+        return fullApplication ? 1 : 2
+    }
+
+    function applyGenerationScope(scopeIndex) {
+        if (scopeIndex === 2)
+            return
+
+        const fullApplication = scopeIndex === 1
+
+        if (layerSupport.entity === true)
+            entityCheckBox.checked = true
+        if (layerSupport.repository === true)
+            repositoryCheckBox.checked = true
+        if (layerSupport.dto === true)
+            dtoCheckBox.checked = fullApplication
+        if (layerSupport.service === true)
+            serviceCheckBox.checked = fullApplication
+        if (layerSupport.controller === true)
+            controllerCheckBox.checked = fullApplication
+        if (layerSupport.domainModel === true)
+            domainModelCheckBox.checked = fullApplication
+        if (generationProfile.supportsInterfaces === true)
+            interfacesCheckBox.checked = true
+        if (generationProfile.supportsAsyncOperations === true)
+            asyncCheckBox.checked = fullApplication
     }
 
     Component.onCompleted: Qt.callLater(syncProfileSettings)
@@ -51,40 +108,62 @@ Page {
         color: "#eef2f7"
     }
 
-    ColumnLayout {
+    Item {
         anchors.fill: parent
         anchors.margins: codeGeneratorPage.width < 620 ? 14 : 24
-        spacing: 14
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 12
+        ColumnLayout {
+            id: codePageHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: 3
 
-            Label {
-                text: appController.selectedLanguageName + " Code Generator"
-                font.pixelSize: 32
-                font.bold: true
-                color: "#101828"
-                wrapMode: Text.WordWrap
+            RowLayout {
                 Layout.fillWidth: true
+                spacing: 12
+
+                Label {
+                    text: appController.selectedLanguageName
+                          + " Secure Code Generator"
+                    font.pixelSize: 32
+                    font.bold: true
+                    color: "#101828"
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                Button {
+                    id: assistantToggle
+                    text: codeGeneratorPage.assistantOpen
+                          ? "Close Assistant"
+                          : "Project Assistant"
+                    checkable: true
+                    checked: codeGeneratorPage.assistantOpen
+                    Layout.preferredHeight: 40
+                    onToggled: codeGeneratorPage.assistantOpen = checked
+                }
             }
 
-            Button {
-                id: assistantToggle
-                text: codeGeneratorPage.assistantOpen
-                      ? "Close Assistant"
-                      : "Open Assistant"
-                checkable: true
-                checked: codeGeneratorPage.assistantOpen
-                Layout.preferredHeight: 40
-                onToggled: codeGeneratorPage.assistantOpen = checked
+            Label {
+                objectName: "secureCodeWorkflowLabel"
+                text: "Connected database schema  ->  validated "
+                      + appController.selectedLanguageName
+                      + " access code"
+                color: "#667085"
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
             }
         }
 
         ScrollView {
             id: dalContentScroll
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            anchors.top: codePageHeader.bottom
+            anchors.topMargin: 12
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: codeActionBar.top
+            anchors.bottomMargin: 12
             contentWidth: availableWidth
             clip: true
 
@@ -106,20 +185,12 @@ Page {
                         anchors.fill: parent
                         spacing: 10
 
-                        RowLayout {
+                        Label {
+                            text: "Output Directory"
+                            font.pixelSize: 20
+                            font.bold: true
+                            color: "#101828"
                             Layout.fillWidth: true
-
-                            Label {
-                                text: "Output Directory"
-                                font.pixelSize: 20
-                                font.bold: true
-                                color: "#101828"
-                                Layout.fillWidth: true
-                            }
-
-                            SettingHelpButton {
-                                helpText: "The exported files are written here only after the generated code passes validation."
-                            }
                         }
 
                         RowLayout {
@@ -139,13 +210,6 @@ Page {
                                 }
                             }
 
-                            Button {
-                                text: "Browse"
-                                Layout.preferredWidth: 96
-                                Layout.preferredHeight: 40
-                                onClicked: folderDialog.open()
-                            }
-
                             TextField {
                                 id: outputFolder
                                 Layout.fillWidth: true
@@ -153,6 +217,18 @@ Page {
                                 text: appController.dalOutputPath
                                 placeholderText: "Output directory"
                                 onEditingFinished: appController.setDalOutputPath(text)
+                            }
+
+                            Button {
+                                text: "Browse"
+                                Layout.preferredWidth: 96
+                                Layout.preferredHeight: 40
+                                onClicked: folderDialog.open()
+                            }
+
+                            SettingHelpButton {
+                                objectName: "outputDirectoryHelpButton"
+                                helpText: "Writes exported files to this folder only after the generated code passes security validation."
                             }
                         }
                     }
@@ -173,7 +249,7 @@ Page {
                         spacing: 12
 
                         Label {
-                            text: "Code Generation Settings"
+                            text: "Security Profile"
                             font.pixelSize: 20
                             font.bold: true
                             color: "#101828"
@@ -181,13 +257,151 @@ Page {
                         }
 
                         Label {
-                            text: generationProfile.summary || ""
+                            text: generationProfile.summary || "Secure defaults are ready for the selected language."
                             color: "#475467"
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
                         }
 
                         GridLayout {
+                            Layout.fillWidth: true
+                            columns: codeGeneratorPage.width < 720 ? 1 : 2
+                            columnSpacing: 24
+                            rowSpacing: 10
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 9
+
+                                Rectangle {
+                                    Layout.preferredWidth: 9
+                                    Layout.preferredHeight: 9
+                                    radius: 5
+                                    color: "#16a34a"
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+
+                                    Label {
+                                        text: "SQL injection protection"
+                                        font.bold: true
+                                        color: "#101828"
+                                    }
+
+                                    Label {
+                                        text: "Parameterized queries are always enabled"
+                                        color: "#067647"
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 9
+
+                                Rectangle {
+                                    Layout.preferredWidth: 9
+                                    Layout.preferredHeight: 9
+                                    radius: 5
+                                    color: "#16a34a"
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+
+                                    Label {
+                                        text: "Export protection"
+                                        font.bold: true
+                                        color: "#101828"
+                                    }
+
+                                    Label {
+                                        text: "Invalid generated code cannot be exported"
+                                        color: "#067647"
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+                            }
+                        }
+
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: codeGeneratorPage.width < 720 ? 1 : 2
+                            columnSpacing: 24
+                            rowSpacing: 10
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Label {
+                                        text: "Generation Scope"
+                                        font.bold: true
+                                        Layout.fillWidth: true
+                                    }
+
+                                    SettingHelpButton {
+                                        objectName: "generationScopeHelpButton"
+                                        helpText: "Secure data access generates the database-facing pieces. Full application layers also add business and presentation code."
+                                    }
+                                }
+
+                                ComboBox {
+                                    id: generationScopeBox
+                                    objectName: "generationScopeBox"
+                                    Layout.fillWidth: true
+                                    model: [
+                                        "Secure data access",
+                                        "Full application layers",
+                                        "Custom configuration"
+                                    ]
+                                    onActivated: function(index) {
+                                        codeGeneratorPage.applyGenerationScope(index)
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                CheckBox {
+                                    id: unitTestsCheckBox
+                                    text: "Generate security-focused tests"
+                                    checked: appController.codeGenerationOptions.unitTests
+                                    Layout.fillWidth: true
+                                }
+
+                                SettingHelpButton {
+                                    helpText: "Adds tests for mappings, input handling and repository contracts without production credentials."
+                                }
+                            }
+                        }
+
+                        ToolButton {
+                            id: advancedSettingsToggle
+                            objectName: "advancedSettingsToggle"
+                            text: codeGeneratorPage.advancedSettingsOpen
+                                  ? "Hide advanced settings"
+                                  : "Show advanced settings"
+                            checkable: true
+                            checked: codeGeneratorPage.advancedSettingsOpen
+                            onToggled: codeGeneratorPage.advancedSettingsOpen = checked
+                            Accessible.name: text
+                        }
+
+                        GridLayout {
+                            id: advancedSettingsGrid
+                            objectName: "advancedSettingsGrid"
+                            visible: codeGeneratorPage.advancedSettingsOpen
                             Layout.fillWidth: true
                             columns: codeGeneratorPage.width < 780 ? 1 : 2
                             columnSpacing: 28
@@ -255,19 +469,6 @@ Page {
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    CheckBox {
-                                        text: "Secure parameterized queries"
-                                        checked: true
-                                        enabled: false
-                                        Layout.fillWidth: true
-                                    }
-                                    SettingHelpButton {
-                                        helpText: "Keeps values separate from SQL commands. This protects against SQL injection through user input."
-                                    }
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
                                     visible: generationProfile.supportsInterfaces === true
                                     CheckBox {
                                         id: interfacesCheckBox
@@ -294,34 +495,17 @@ Page {
                                     }
                                 }
 
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    CheckBox {
-                                        id: unitTestsCheckBox
-                                        text: "Generate unit tests"
-                                        checked: appController.codeGenerationOptions.unitTests
-                                        Layout.fillWidth: true
-                                    }
-                                    SettingHelpButton {
-                                        helpText: "Adds tests for mappings, business rules and repository contracts without production credentials."
-                                    }
-                                }
                             }
 
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 6
 
-                                RowLayout {
+                                Label {
+                                    text: "Layers"
+                                    font.bold: true
+                                    color: "#101828"
                                     Layout.fillWidth: true
-                                    Label {
-                                        text: "Layers"
-                                        font.bold: true
-                                        Layout.fillWidth: true
-                                    }
-                                    SettingHelpButton {
-                                        helpText: "Only layers that make sense for the selected language are shown."
-                                    }
                                 }
 
                                 RowLayout {
@@ -440,7 +624,7 @@ Page {
                             spacing: 10
 
                             Label {
-                                text: "Generated Code"
+                                text: "Secure Code Preview"
                                 font.pixelSize: 20
                                 font.bold: true
                                 color: "#101828"
@@ -465,7 +649,7 @@ Page {
                                     font.family: "Consolas"
                                     font.pixelSize: 14
                                     wrapMode: TextEdit.WrapAnywhere
-                                    placeholderText: "Generated application code will appear here..."
+                                    placeholderText: "Validated secure code will appear here..."
                                     onTextChanged: {
                                         if (!appController.loading)
                                             appController.validateGeneratedCode(text)
@@ -584,22 +768,26 @@ Page {
         }
 
         GridLayout {
-            Layout.fillWidth: true
-            columns: codeGeneratorPage.width < 560
-                     ? 1 : codeGeneratorPage.width < 860 ? 2 : 4
+            id: codeActionBar
+            objectName: "codeActionBar"
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            columns: codeGeneratorPage.width < 700
+                     ? 1 : codeGeneratorPage.width < 1000 ? 2 : 4
             columnSpacing: 12
             rowSpacing: 10
 
             Button {
                 id: generateButton
-                text: "Generate Code"
+                text: "Generate Secure Code"
                 Layout.fillWidth: true
                 Layout.minimumWidth: 140
                 Layout.preferredHeight: 46
                 enabled: !appController.loading && appController.aiEnvironmentReady
 
                 onClicked: {
-                    generatedCodeArea.text = "Generating application code..."
+                    generatedCodeArea.text = "Generating secure application code..."
                     appController.onGenerateApplicationCode({
                         "architecture": architectureBox.currentText,
                         "databaseApi": databaseApiBox.currentText,

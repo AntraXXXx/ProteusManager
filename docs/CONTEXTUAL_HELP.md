@@ -5,6 +5,10 @@ The small information button can be reached by mouse or keyboard and stays
 open after a click so longer text can be read without holding the pointer in
 place.
 
+Section and page headings never receive an information button. Their wording
+must explain the section directly; contextual help belongs only to an
+editable setting or option.
+
 ## Writing Rules
 
 Each explanation should remain short and answer these questions:
@@ -20,17 +24,19 @@ tokens, or values copied from password fields.
 
 The main workflow documents the target language, Ollama model and endpoint,
 local or online database mode, local database file, database driver, database
-name, host, port, user name, and password. The SQL generator documents its
-source folder and audit-field option. Language-specific code generation
-settings are covered by issue #20.
+name, host, port, user name, and password. Class to SQL documents its source
+folder and audit-field option. Secure Code documents its generation scope,
+output directory, and language-specific advanced settings.
 
 ## Layout Rules
 
 - Keep the information button directly to the right of its setting.
+- Do not place information buttons next to page or section headings.
 - Keep controls usable at a 560-pixel-wide application window.
 - Use compact spacing and a maximum content width on wide displays.
 - Keep section corner radii at 8 pixels.
 - Present AI and database state as status, not as another editable setting.
 
 `QmlWorkflowTest` verifies the help controls and checks that action bars remain
-inside the main and SQL pages at the compact reference size.
+inside the main, Class to SQL, and Secure Code pages at the compact reference
+size.

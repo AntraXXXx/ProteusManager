@@ -34,6 +34,7 @@ private slots:
     void parsesJavaFields();
     void mapsLanguageTypesToSql();
     void returnsEmptyListForContentWithoutClasses();
+    void returnsOnlyDatabaseReadyClassDeclarations();
 };
 
 void ClassParserTest::parsesCppMembersAndRelations()
@@ -369,6 +370,34 @@ void ClassParserTest::returnsEmptyListForContentWithoutClasses()
             ProgrammingLanguage::ProgrammingLanguageType::Cplusplus);
 
     QVERIFY(classes.isEmpty());
+}
+
+void ClassParserTest::returnsOnlyDatabaseReadyClassDeclarations()
+{
+    const QString source = R"(
+var customer = new Customer();
+
+class EmptyService {
+public:
+    void run();
+};
+
+class Customer {
+private:
+    int m_id;
+    QString m_name;
+};
+)";
+
+    ClassParser parser;
+    const QList<ParsedClass> classes =
+        parser.parseDatabaseClasses(
+            source,
+            ProgrammingLanguage::ProgrammingLanguageType::Cplusplus);
+
+    QCOMPARE(classes.size(), 1);
+    QCOMPARE(classes.first().name, QString("Customer"));
+    QCOMPARE(classes.first().attributes.size(), 2);
 }
 
 QTEST_MAIN(ClassParserTest)

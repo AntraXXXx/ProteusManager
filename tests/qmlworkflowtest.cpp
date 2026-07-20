@@ -519,6 +519,20 @@ void QmlWorkflowTest::loadsMainMenuPage()
             "AI Status:")
         != nullptr);
 
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Class to SQL")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Secure Code")
+        != nullptr);
+
     const QStringList helpButtons = {
         "languageHelpButton",
         "aiModelHelpButton",
@@ -668,6 +682,34 @@ void QmlWorkflowTest::sqlPageDisplaysGeneratedSql()
 
     QVERIFY(outputArea != nullptr);
 
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Class to SQL")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "1. Source Classes")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Create SQL Schema")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Apply to Database")
+        != nullptr);
+
     const QStringList helpButtons = {
         "classesFolderHelpButton",
         "auditFieldsHelpButton"
@@ -718,7 +760,7 @@ void QmlWorkflowTest::dalPageDisplaysGeneratedCode()
         findObjectWithProperty(
             page.get(),
             "placeholderText",
-            "Generated application code will appear here...");
+            "Validated secure code will appear here...");
 
     QVERIFY(outputArea != nullptr);
 
@@ -733,14 +775,14 @@ void QmlWorkflowTest::dalPageDisplaysGeneratedCode()
         findObjectWithProperty(
             page.get(),
             "text",
-            "Secure parameterized queries")
+            "SQL injection protection")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
             page.get(),
             "text",
-            "Open Assistant")
+            "Generate Secure Code")
         != nullptr);
 
     QVERIFY(
@@ -749,6 +791,49 @@ void QmlWorkflowTest::dalPageDisplaysGeneratedCode()
             "text",
             "Database API")
         != nullptr);
+
+    QObject *advancedSettings =
+        findObjectWithProperty(
+            page.get(),
+            "objectName",
+            "advancedSettingsGrid");
+    QVERIFY(advancedSettings != nullptr);
+    QVERIFY(!advancedSettings->property("visible").toBool());
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "objectName",
+            "generationScopeBox")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "objectName",
+            "outputDirectoryHelpButton")
+        != nullptr);
+
+    QVERIFY(QMetaObject::invokeMethod(
+        page.get(),
+        "applyGenerationScope",
+        Q_ARG(QVariant, QVariant(1))));
+    QCoreApplication::processEvents();
+
+    QObject *serviceLayer =
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Service / BLL");
+    QObject *controllerLayer =
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Controller / Presentation");
+    QVERIFY(serviceLayer != nullptr);
+    QVERIFY(controllerLayer != nullptr);
+    QVERIFY(serviceLayer->property("checked").toBool());
+    QVERIFY(controllerLayer->property("checked").toBool());
 
     const QString dal =
         "FILE: CustomerRepository.h\n"
@@ -770,7 +855,8 @@ void QmlWorkflowTest::compactSettingsPagesKeepActionsVisible()
 
     const PageExpectation pages[] = {
         {"MainMenuPage.qml", "mainActionBar"},
-        {"SqlGeneratorPage.qml", "sqlActionBar"}
+        {"SqlGeneratorPage.qml", "sqlActionBar"},
+        {"ProgrammingCodeGeneratorPage.qml", "codeActionBar"}
     };
 
     for (const PageExpectation& expectation : pages) {
@@ -803,7 +889,13 @@ void QmlWorkflowTest::compactSettingsPagesKeepActionsVisible()
             QPointF(actionBar->width(), actionBar->height()));
         QVERIFY2(
             actionBottomRight.x() <= rootItem->width() + 1.0,
-            expectation.fileName);
+            qPrintable(QString("%1 action right %2 exceeds root width %3 (action x %4, width %5, columns %6)")
+                           .arg(expectation.fileName)
+                           .arg(actionBottomRight.x())
+                           .arg(rootItem->width())
+                           .arg(actionBar->x())
+                           .arg(actionBar->width())
+                           .arg(actionBar->property("columns").toInt())));
         QVERIFY2(
             actionBottomRight.y() <= rootItem->height() + 1.0,
             qPrintable(QString("%1 action bottom %2 exceeds root height %3")
