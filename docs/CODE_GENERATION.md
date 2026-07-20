@@ -19,9 +19,19 @@ The available settings change with the selected programming language. Object-ori
 
 Database API choices are also language-specific. Examples include ADO.NET or Dapper for C#, DB-API or SQLAlchemy Core for Python, SQLx or Diesel for Rust, and JDBC or Spring JDBC for Java. Settings are stored separately for each language so switching languages does not reuse an incompatible API or architecture.
 
-Every visible setting has a short `i` help button in the QML page. Interfaces, asynchronous operations, and available layers use language-appropriate labels and defaults.
+Every editable setting has a short `i` help button in the QML page. Page and section headings do not. Interfaces, asynchronous operations, and available layers use language-appropriate labels and defaults.
 
 SQL injection protection is mandatory. The UI does not provide an option for disabling parameter binding.
+
+## Simple And Advanced Modes
+
+The default Secure Code view keeps the mandatory protections visible and groups the output into three scopes:
+
+- Secure data access: entities and repository or DAO code
+- Full application layers: data access, business, and presentation layers
+- Custom configuration: the exact advanced layer selection
+
+Architecture, database API, data-access pattern, interfaces, asynchronous operations, and individual layers remain available under `Show advanced settings`. They are collapsed by default so a user can generate a secure language profile without first understanding every architecture term.
 
 ## Language And Provider Profiles
 
@@ -65,9 +75,9 @@ These checks reduce model-dependent output differences, but they do not replace 
 
 1. Connect the target database.
 2. Select the programming language on the main page.
-3. Open the Code Generator.
-4. Select the language-specific architecture, database API, data access pattern, and required layers.
-5. Generate the complete file set.
+3. Open Secure Code.
+4. Select Secure data access or Full application layers. Open advanced settings only when the project needs a specific architecture, API, pattern, or layer selection.
+5. Generate the secure file set.
 6. Review the validation result and source code.
 7. Export only after validation passes.
 8. Open the optional Project Assistant for questions about the current project and generated output.
