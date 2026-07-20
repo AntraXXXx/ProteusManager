@@ -12,6 +12,8 @@
 #include <QHash>
 #include <QRegularExpression>
 #include <QSet>
+#include <QTemporaryDir>
+#include <QUuid>
 #include <QVariantMap>
 
 namespace
@@ -1439,9 +1441,118 @@ bool DatabaseManager::validateMigrationPreview(
         return false;
     }
 
+    if (db.driverName() == "QSQLITE")
+    {
+        QTemporaryDir previewDirectory;
+        if (!previewDirectory.isValid())
+        {
+            m_lastError =
+                "Could not create an isolated SQLite normalization preview directory.";
+            return false;
+        }
+
+        const QString previewPath =
+            previewDirectory.filePath(
+                "normalization-preview.sqlite");
+        QString escapedPreviewPath = previewPath;
+        escapedPreviewPath.replace("'", "''");
+
+        QSqlQuery snapshotQuery(db);
+        if (!snapshotQuery.exec(
+                "VACUUM INTO '"
+                + escapedPreviewPath
+                + "'"))
+        {
+            m_lastError =
+                "Could not create an isolated SQLite normalization preview: "
+                + snapshotQuery.lastError().text();
+            return false;
+        }
+
+        const QString previewConnectionName =
+            "proteus_normalization_preview_"
+            + QUuid::createUuid().toString(
+                QUuid::WithoutBraces);
+        bool previewValid = false;
+
+        {
+            QSqlDatabase previewDb =
+                QSqlDatabase::addDatabase(
+                    "QSQLITE",
+                    previewConnectionName);
+            previewDb.setDatabaseName(previewPath);
+
+            if (!previewDb.open())
+            {
+                m_lastError =
+                    "Could not open the isolated SQLite normalization preview: "
+                    + previewDb.lastError().text();
+            }
+            else if (!previewDb.transaction())
+            {
+                m_lastError =
+                    "Could not start the isolated SQLite normalization preview: "
+                    + previewDb.lastError().text();
+            }
+            else
+            {
+                previewValid = true;
+
+                for (QString statement :
+                     sqlStatements(migrationSql))
+                {
+                    statement =
+                        stripLeadingSqlComments(statement);
+                    if (statement.isEmpty())
+                        continue;
+
+                    QSqlQuery query(previewDb);
+                    if (!query.exec(statement))
+                    {
+                        m_lastError =
+                            "SQL is not executable for QSQLITE on the isolated preview: "
+                            + query.lastError().text();
+                        previewValid = false;
+                        break;
+                    }
+                }
+
+                if (previewValid)
+                {
+                    QSqlQuery foreignKeyCheck(
+                        "PRAGMA foreign_key_check",
+                        previewDb);
+                    if (foreignKeyCheck.next())
+                    {
+                        m_lastError =
+                            "Foreign key validation failed in the isolated SQLite preview.";
+                        previewValid = false;
+                    }
+                }
+
+                if (!previewDb.rollback())
+                {
+                    m_lastError =
+                        "Could not roll back the isolated SQLite normalization preview: "
+                        + previewDb.lastError().text();
+                    previewValid = false;
+                }
+            }
+
+            previewDb.close();
+        }
+
+        QSqlDatabase::removeDatabase(
+            previewConnectionName);
+
+        if (previewValid)
+            m_lastError.clear();
+
+        return previewValid;
+    }
+
     const bool supportsRollbackValidation =
-        db.driverName() == "QSQLITE"
-        || db.driverName().startsWith("QPSQL");
+        db.driverName().startsWith("QPSQL");
     if (!supportsRollbackValidation)
     {
         m_lastError.clear();
@@ -1470,20 +1581,6 @@ bool DatabaseManager::validateMigrationPreview(
                 + db.driverName()
                 + ": "
                 + query.lastError().text();
-            db.rollback();
-            return false;
-        }
-    }
-
-    if (db.driverName() == "QSQLITE")
-    {
-        QSqlQuery foreignKeyCheck(
-            "PRAGMA foreign_key_check",
-            db);
-        if (foreignKeyCheck.next())
-        {
-            m_lastError =
-                "Foreign key validation failed in the migration preview.";
             db.rollback();
             return false;
         }
