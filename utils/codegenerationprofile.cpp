@@ -30,7 +30,8 @@ QString normalizedChoice(
 
 QString providerFor(
     ProgrammingLanguage::ProgrammingLanguageType language,
-    const QString& databaseDialect)
+    const QString& databaseDialect,
+    const QString& databaseApi)
 {
     const bool sqlite =
         databaseDialect.contains("sqlite", Qt::CaseInsensitive);
@@ -55,6 +56,11 @@ QString providerFor(
             return "libpq with PQexecParams or prepared statements";
         return "the ODBC C API with SQLPrepare and SQLBindParameter";
     case Type::Csharp:
+        if (databaseApi == "Dapper")
+        {
+            return "Dapper with the matching ADO.NET provider for "
+                   + databaseDialect;
+        }
         if (sqlite)
             return "Microsoft.Data.Sqlite";
         if (mysql)
@@ -63,6 +69,12 @@ QString providerFor(
             return "Npgsql";
         return "Microsoft.Data.SqlClient";
     case Type::Python:
+        if (databaseApi == "SQLAlchemy Core")
+        {
+            return "SQLAlchemy Core with a supported "
+                   + databaseDialect
+                   + " dialect and bound parameters";
+        }
         if (sqlite)
             return "Python's sqlite3 module";
         if (mysql)
@@ -71,6 +83,11 @@ QString providerFor(
             return "psycopg 3";
         return "pyodbc";
     case Type::Go:
+        if (databaseApi == "sqlc-compatible")
+        {
+            return "sqlc-compatible typed queries over database/sql with the matching driver for "
+                   + databaseDialect;
+        }
         if (sqlite)
             return "database/sql with modernc.org/sqlite";
         if (mysql)
@@ -79,10 +96,20 @@ QString providerFor(
             return "database/sql with github.com/jackc/pgx/v5/stdlib";
         return "database/sql with github.com/microsoft/go-mssqldb";
     case Type::Rust:
+        if (databaseApi == "Diesel")
+        {
+            return "Diesel with the matching backend feature for "
+                   + databaseDialect;
+        }
         if (sqlite || mysql || postgres)
             return "SQLx with the matching database feature";
         return "odbc-api for SQL Server through ODBC";
     case Type::Fsharp:
+        if (databaseApi == "Dapper.FSharp")
+        {
+            return "Dapper.FSharp with the matching ADO.NET provider for "
+                   + databaseDialect;
+        }
         if (sqlite)
             return "Microsoft.Data.Sqlite";
         if (mysql)
@@ -99,6 +126,11 @@ QString providerFor(
             return "Npgsql loaded as a .NET provider";
         return "Microsoft.Data.SqlClient";
     case Type::Java:
+        if (databaseApi == "Spring JDBC")
+        {
+            return "Spring JDBC with the official driver for "
+                   + databaseDialect;
+        }
         return "JDBC with the official driver for " + databaseDialect;
     }
 
@@ -167,7 +199,8 @@ bool fileMatchesLayer(
 
 bool hasSecureBindingMarkers(
     const QString& response,
-    ProgrammingLanguage::ProgrammingLanguageType language)
+    ProgrammingLanguage::ProgrammingLanguageType language,
+    const CodeGenerationOptions& options)
 {
     using Type = ProgrammingLanguage::ProgrammingLanguageType;
 
@@ -185,13 +218,45 @@ bool hasSecureBindingMarkers(
                || (response.contains("SQLPrepare")
                    && response.contains("SQLBindParameter"));
     case Type::Csharp:
+        if (options.databaseApi == "Dapper")
+        {
+            return response.contains(
+                       QRegularExpression(
+                           R"(\b(Query|Execute)(Async)?\s*(?:<[^>]+>)?\s*\()"))
+                   && response.contains(
+                       QRegularExpression(
+                           R"((new\s*\{|DynamicParameters|param\s*:))",
+                           QRegularExpression::CaseInsensitiveOption));
+        }
+        [[fallthrough]];
     case Type::Fsharp:
+        if (language == Type::Fsharp
+            && options.databaseApi == "Dapper.FSharp")
+        {
+            return response.contains("Dapper.FSharp")
+                   && response.contains(
+                       QRegularExpression(
+                           R"((where|set|insert|update|delete)\s*\{?)",
+                           QRegularExpression::CaseInsensitiveOption));
+        }
+        [[fallthrough]];
     case Type::Powershell:
         return response.contains(
             QRegularExpression(
                 R"((Parameters\s*\.\s*Add|DbParameter|SqlParameter|NpgsqlParameter|MySqlParameter))",
                 QRegularExpression::CaseInsensitiveOption));
     case Type::Python:
+        if (options.databaseApi == "SQLAlchemy Core")
+        {
+            return response.contains(
+                       QRegularExpression(
+                           R"((text|bindparam)\s*\()",
+                           QRegularExpression::CaseInsensitiveOption))
+                   && response.contains(
+                       QRegularExpression(
+                           R"(\.execute\s*\([^,\r\n]+,\s*[^)]+\))",
+                           QRegularExpression::CaseInsensitiveOption));
+        }
         return response.contains(
             QRegularExpression(
                 R"((execute|executemany)\s*\([^,\r\n]+,\s*[^)]+\))",
@@ -201,9 +266,26 @@ bool hasSecureBindingMarkers(
             QRegularExpression(
                 R"((Exec|Query|Prepare)(Context)?\s*\()"));
     case Type::Rust:
+        if (options.databaseApi == "Diesel")
+        {
+            return response.contains(
+                       QRegularExpression(
+                           R"((diesel::|\.filter\s*\(|\.eq\s*\(|sql_query\s*\())",
+                           QRegularExpression::CaseInsensitiveOption));
+        }
         return response.contains(".bind(")
                || response.contains("params![");
     case Type::Java:
+        if (options.databaseApi == "Spring JDBC")
+        {
+            return response.contains(
+                       QRegularExpression(
+                           R"((JdbcTemplate|NamedParameterJdbcTemplate))"))
+                   && (response.contains("MapSqlParameterSource")
+                       || response.contains(
+                           QRegularExpression(
+                               R"(\.(query|update)\s*\([^,\r\n]+,\s*[^)]+\))")));
+        }
         return response.contains("PreparedStatement")
                && response.contains(
                    QRegularExpression(R"(\.set[A-Z][A-Za-z]*\s*\()"));
@@ -211,6 +293,154 @@ bool hasSecureBindingMarkers(
 
     return false;
 }
+}
+
+QVariantMap CodeGenerationProfile::capabilities(
+    ProgrammingLanguage::ProgrammingLanguageType language)
+{
+    using Type = ProgrammingLanguage::ProgrammingLanguageType;
+
+    QStringList architectures = {
+        "Layered", "Clean Architecture", "Hexagonal"
+    };
+    QStringList dataAccessPatterns = {"Repository", "DAO"};
+    QStringList databaseApis;
+    QVariantMap layers = {
+        {"entity", true},
+        {"dto", true},
+        {"repository", true},
+        {"service", true},
+        {"controller", true},
+        {"domainModel", true}
+    };
+    bool supportsInterfaces = true;
+    bool supportsAsyncOperations = true;
+    QString interfaceLabel = "Generate interfaces";
+    QString asyncLabel = "Generate asynchronous operations";
+    QString summary;
+
+    switch (language)
+    {
+    case Type::Cplusplus:
+        databaseApis = {"Qt SQL"};
+        supportsAsyncOperations = false;
+        asyncLabel = "Generate asynchronous operations";
+        summary = "Qt SQL uses explicit ownership, RAII and prepared QSqlQuery statements.";
+        break;
+    case Type::C:
+        architectures = {"Procedural", "Layered"};
+        dataAccessPatterns = {"DAO"};
+        databaseApis = {"Native prepared API"};
+        layers["dto"] = false;
+        layers["controller"] = false;
+        layers["domainModel"] = false;
+        supportsInterfaces = false;
+        supportsAsyncOperations = false;
+        interfaceLabel = "Generate header contracts";
+        summary = "C uses opaque contexts, structs, header contracts and explicit cleanup.";
+        break;
+    case Type::Csharp:
+        databaseApis = {"ADO.NET", "Dapper"};
+        summary = "C# can use direct ADO.NET commands or Dapper with typed parameters.";
+        break;
+    case Type::Python:
+        databaseApis = {"DB-API", "SQLAlchemy Core"};
+        interfaceLabel = "Generate Protocol abstractions";
+        summary = "Python uses typed modules, context managers and bound query parameters.";
+        break;
+    case Type::Go:
+        dataAccessPatterns = {"Repository"};
+        databaseApis = {"database/sql", "sqlc-compatible"};
+        asyncLabel = "Generate context-aware operations";
+        summary = "Go uses context.Context, database/sql and explicit error returns.";
+        break;
+    case Type::Rust:
+        dataAccessPatterns = {"Repository"};
+        databaseApis = {"SQLx", "Diesel"};
+        interfaceLabel = "Generate repository traits";
+        summary = "Rust uses Result, ownership-aware models and SQLx or Diesel bindings.";
+        break;
+    case Type::Fsharp:
+        dataAccessPatterns = {"Repository"};
+        databaseApis = {"ADO.NET", "Dapper.FSharp"};
+        interfaceLabel = "Generate interface abstractions";
+        summary = "F# uses records, modules, expressions and parameterized .NET providers.";
+        break;
+    case Type::Powershell:
+        architectures = {"Script Module", "Layered"};
+        dataAccessPatterns = {"Functions"};
+        databaseApis = {"ADO.NET provider"};
+        layers["dto"] = false;
+        layers["controller"] = false;
+        layers["domainModel"] = false;
+        supportsInterfaces = false;
+        supportsAsyncOperations = false;
+        interfaceLabel = "Generate module contracts";
+        summary = "PowerShell uses advanced functions, modules and .NET database parameters.";
+        break;
+    case Type::Java:
+        databaseApis = {"JDBC", "Spring JDBC"};
+        supportsAsyncOperations = false;
+        summary = "Java uses JDBC or Spring JDBC with explicit resources and bound values.";
+        break;
+    }
+
+    return {
+        {"architectures", architectures},
+        {"dataAccessPatterns", dataAccessPatterns},
+        {"databaseApis", databaseApis},
+        {"defaultArchitecture", architectures.first()},
+        {"defaultDataAccessPattern", dataAccessPatterns.first()},
+        {"defaultDatabaseApi", databaseApis.first()},
+        {"layerSupport", layers},
+        {"supportsInterfaces", supportsInterfaces},
+        {"supportsAsyncOperations", supportsAsyncOperations},
+        {"interfaceLabel", interfaceLabel},
+        {"asyncLabel", asyncLabel},
+        {"summary", summary}
+    };
+}
+
+CodeGenerationOptions CodeGenerationProfile::optionsFor(
+    ProgrammingLanguage::ProgrammingLanguageType language,
+    const QVariantMap& values)
+{
+    CodeGenerationOptions options =
+        CodeGenerationOptions::fromVariantMap(values);
+    const QVariantMap profile = capabilities(language);
+    const QVariantMap layers =
+        profile.value("layerSupport").toMap();
+
+    options.architecture = normalizedChoice(
+        options.architecture,
+        profile.value("architectures").toStringList(),
+        profile.value("defaultArchitecture").toString());
+    options.dataAccessPattern = normalizedChoice(
+        options.dataAccessPattern,
+        profile.value("dataAccessPatterns").toStringList(),
+        profile.value("defaultDataAccessPattern").toString());
+    options.databaseApi = normalizedChoice(
+        options.databaseApi,
+        profile.value("databaseApis").toStringList(),
+        profile.value("defaultDatabaseApi").toString());
+
+    options.entity = options.entity && layers.value("entity").toBool();
+    options.dto = options.dto && layers.value("dto").toBool();
+    options.repository =
+        options.repository && layers.value("repository").toBool();
+    options.service = options.service && layers.value("service").toBool();
+    options.controller =
+        options.controller && layers.value("controller").toBool();
+    options.domainModel =
+        options.domainModel && layers.value("domainModel").toBool();
+    options.interfaces =
+        options.interfaces
+        && profile.value("supportsInterfaces").toBool();
+    options.asyncOperations =
+        options.asyncOperations
+        && profile.value("supportsAsyncOperations").toBool();
+
+    return options;
 }
 
 CodeGenerationOptions CodeGenerationOptions::fromVariantMap(
@@ -228,12 +458,14 @@ CodeGenerationOptions CodeGenerationOptions::fromVariantMap(
     options.asyncOperations = values.value("asyncOperations", false).toBool();
     options.architecture = normalizedChoice(
         values.value("architecture", "Layered").toString(),
-        {"Layered", "Clean Architecture", "Hexagonal"},
+        {"Layered", "Clean Architecture", "Hexagonal", "Procedural", "Script Module"},
         "Layered");
     options.dataAccessPattern = normalizedChoice(
         values.value("dataAccessPattern", "Repository").toString(),
-        {"Repository", "DAO"},
+        {"Repository", "DAO", "Functions"},
         "Repository");
+    options.databaseApi =
+        values.value("databaseApi").toString().trimmed();
     return options;
 }
 
@@ -250,7 +482,8 @@ QVariantMap CodeGenerationOptions::toVariantMap() const
         {"unitTests", unitTests},
         {"asyncOperations", asyncOperations},
         {"architecture", architecture},
-        {"dataAccessPattern", dataAccessPattern}
+        {"dataAccessPattern", dataAccessPattern},
+        {"databaseApi", databaseApi}
     };
 }
 
@@ -283,7 +516,9 @@ QString CodeGenerationProfile::buildPromptInstructions(
 
     QString instructions =
         "Target language: " + languageName + ". "
-        + "Database provider: " + providerFor(language, databaseDialect) + ". "
+        + "Database API: " + options.databaseApi + ". "
+        + "Database provider: "
+        + providerFor(language, databaseDialect, options.databaseApi) + ". "
         + fileRules(language)
         + "Architecture: " + options.architecture + ". "
         + "Data access pattern: " + options.dataAccessPattern + ". "
@@ -434,7 +669,7 @@ QStringList CodeGenerationProfile::validateResponse(
         errors.append("No language source file was generated.");
 
     if (options.repository
-        && !hasSecureBindingMarkers(response, language))
+        && !hasSecureBindingMarkers(response, language, options))
     {
         errors.append(
             "The data access code does not contain the required prepared-statement parameter binding.");

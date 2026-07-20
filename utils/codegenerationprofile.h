@@ -20,6 +20,7 @@ struct CodeGenerationOptions
     bool asyncOperations = false;
     QString architecture = "Layered";
     QString dataAccessPattern = "Repository";
+    QString databaseApi;
 
     static CodeGenerationOptions fromVariantMap(
         const QVariantMap& values);
@@ -31,6 +32,13 @@ struct CodeGenerationOptions
 class CodeGenerationProfile
 {
 public:
+    static QVariantMap capabilities(
+        ProgrammingLanguage::ProgrammingLanguageType language);
+
+    static CodeGenerationOptions optionsFor(
+        ProgrammingLanguage::ProgrammingLanguageType language,
+        const QVariantMap& values = {});
+
     static QString buildPromptInstructions(
         ProgrammingLanguage::ProgrammingLanguageType language,
         const QString& databaseDialect,

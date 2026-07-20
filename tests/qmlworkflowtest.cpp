@@ -41,8 +41,11 @@ class FakeAppController : public QObject
     Q_PROPERTY(QVariantList normalizationBeforeSchema READ normalizationBeforeSchema NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantList normalizationAfterSchema READ normalizationAfterSchema NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantMap codeGenerationOptions READ codeGenerationOptions NOTIFY codeGenerationSettingsChanged)
+    Q_PROPERTY(QVariantMap codeGenerationCapabilities READ codeGenerationCapabilities NOTIFY codeGenerationSettingsChanged)
     Q_PROPERTY(bool generatedCodeValid READ generatedCodeValid NOTIFY generatedCodeValidationChanged)
     Q_PROPERTY(QString codeGenerationValidationSummary READ codeGenerationValidationSummary NOTIFY generatedCodeValidationChanged)
+    Q_PROPERTY(QVariantList codeAssistantMessages READ codeAssistantMessages NOTIFY codeAssistantChanged)
+    Q_PROPERTY(bool codeAssistantBusy READ codeAssistantBusy NOTIFY codeAssistantChanged)
 
 public:
     QString selectedLanguageName() const { return m_languageName; }
@@ -71,8 +74,33 @@ public:
     QVariantList normalizationBeforeSchema() const { return m_normalizationBeforeSchema; }
     QVariantList normalizationAfterSchema() const { return m_normalizationAfterSchema; }
     QVariantMap codeGenerationOptions() const { return m_codeGenerationOptions; }
+    QVariantMap codeGenerationCapabilities() const
+    {
+        const bool python = m_languageName == "Python";
+        return {
+            {"architectures", QStringList{"Layered", "Clean Architecture", "Hexagonal"}},
+            {"dataAccessPatterns", QStringList{"Repository", "DAO"}},
+            {"databaseApis", python
+                                 ? QStringList{"DB-API", "SQLAlchemy Core"}
+                                 : QStringList{"Qt SQL"}},
+            {"layerSupport", QVariantMap{
+                 {"entity", true}, {"dto", true},
+                 {"repository", true}, {"service", true},
+                 {"controller", true}, {"domainModel", true}
+             }},
+            {"supportsInterfaces", true},
+            {"supportsAsyncOperations", python},
+            {"interfaceLabel", python
+                                   ? "Generate Protocol abstractions"
+                                   : "Generate interfaces"},
+            {"asyncLabel", "Generate asynchronous operations"},
+            {"summary", "Language-specific generation profile."}
+        };
+    }
     bool generatedCodeValid() const { return m_generatedCodeValid; }
     QString codeGenerationValidationSummary() const { return m_codeGenerationValidationSummary; }
+    QVariantList codeAssistantMessages() const { return m_codeAssistantMessages; }
+    bool codeAssistantBusy() const { return false; }
 
     Q_INVOKABLE QStringList codeLanguages() const
     {
@@ -255,6 +283,26 @@ public:
         return m_generatedCodeValid;
     }
 
+    Q_INVOKABLE void askCodeAssistant(
+        const QString& question,
+        const QString&)
+    {
+        m_codeAssistantMessages.append(QVariantMap{
+            {"role", "user"}, {"text", question}
+        });
+        m_codeAssistantMessages.append(QVariantMap{
+            {"role", "assistant"},
+            {"text", "Use the simplest matching architecture."}
+        });
+        emit codeAssistantChanged();
+    }
+
+    Q_INVOKABLE void clearCodeAssistant()
+    {
+        m_codeAssistantMessages.clear();
+        emit codeAssistantChanged();
+    }
+
     Q_INVOKABLE void onExportDalCode(
         const QString&,
         const QString&)
@@ -302,6 +350,7 @@ signals:
     void normalizationChanged();
     void codeGenerationSettingsChanged();
     void generatedCodeValidationChanged();
+    void codeAssistantChanged();
 
 private:
     QString m_languageName = "C++";
@@ -339,6 +388,7 @@ private:
         m_normalizationBeforeSchema;
     QVariantMap m_codeGenerationOptions = {
         {"architecture", "Layered"},
+        {"databaseApi", "Qt SQL"},
         {"dataAccessPattern", "Repository"},
         {"entity", true},
         {"dto", true},
@@ -353,6 +403,7 @@ private:
     bool m_generatedCodeValid = false;
     QString m_codeGenerationValidationSummary =
         "Generate code to run validation.";
+    QVariantList m_codeAssistantMessages;
 };
 
 namespace
@@ -638,6 +689,20 @@ void QmlWorkflowTest::dalPageDisplaysGeneratedCode()
             page.get(),
             "text",
             "Secure parameterized queries")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Open Assistant")
+        != nullptr);
+
+    QVERIFY(
+        findObjectWithProperty(
+            page.get(),
+            "text",
+            "Database API")
         != nullptr);
 
     const QString dal =
