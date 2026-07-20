@@ -91,6 +91,13 @@ QString normalizationGoal(const QString& form)
 
     return {};
 }
+
+QString codeGenerationSettingsKey(
+    ProgrammingLanguage::ProgrammingLanguageType language)
+{
+    return QString("codeGeneration/options/%1")
+        .arg(static_cast<int>(language));
+}
 }
 
 AppController::AppController(QObject *parent)
@@ -103,9 +110,19 @@ AppController::AppController(QObject *parent)
     m_isLocalDatabase = settings.value("database/isLocalConnection", true).toBool();
     m_dalOutputPath = settings.value("dal/outputPath","").toString();
     m_classFolderPath = settings.value("classes/scripts", "").toString();
+    QVariantMap storedCodeGenerationOptions =
+        settings.value(
+            codeGenerationSettingsKey(m_selectedLanguageType))
+            .toMap();
+    if (storedCodeGenerationOptions.isEmpty())
+    {
+        storedCodeGenerationOptions =
+            settings.value("codeGeneration/options").toMap();
+    }
     m_codeGenerationOptions =
-        CodeGenerationOptions::fromVariantMap(
-            settings.value("codeGeneration/options").toMap())
+        CodeGenerationProfile::optionsFor(
+            m_selectedLanguageType,
+            storedCodeGenerationOptions)
             .toVariantMap();
     m_codeGenerationValidationSummary =
         "Generate code to run structural and security validation.";
@@ -170,6 +187,16 @@ AppController::AppController(QObject *parent)
             {
                 m_loading = false;
                 emit loadingChanged();
+            }
+
+            if (m_codeAssistantBusy)
+            {
+                m_codeAssistantBusy = false;
+                m_codeAssistantMessages.append(QVariantMap{
+                    {"role", "assistant"},
+                    {"text", "Assistant request failed: " + errorMessage}
+                });
+                emit codeAssistantChanged();
             }
 
             if (!m_selectedNormalizationForm.isEmpty())
@@ -266,7 +293,8 @@ AppController::AppController(QObject *parent)
                     m_lastCodeGenerationTables);
 
             const CodeGenerationOptions options =
-                CodeGenerationOptions::fromVariantMap(
+                CodeGenerationProfile::optionsFor(
+                    m_generationLanguageType,
                     m_codeGenerationOptions);
             const QStringList validationErrors =
                 CodeGenerationProfile::validateResponse(
@@ -335,6 +363,22 @@ AppController::AppController(QObject *parent)
         [this](const QString& sql)
         {
             handleNormalizationResponse(sql);
+        });
+
+    connect(
+        m_ollamaClient,
+        &OllamaClient::assistantReceived,
+        this,
+        [this](const QString& response)
+        {
+            m_codeAssistantMessages.append(QVariantMap{
+                {"role", "assistant"},
+                {"text", response.isEmpty()
+                             ? "The assistant returned an empty response."
+                             : response}
+            });
+            m_codeAssistantBusy = false;
+            emit codeAssistantChanged();
         });
 
     refreshAiEnvironment();
@@ -1397,6 +1441,12 @@ QVariantMap AppController::codeGenerationOptions() const
     return m_codeGenerationOptions;
 }
 
+QVariantMap AppController::codeGenerationCapabilities() const
+{
+    return CodeGenerationProfile::capabilities(
+        m_selectedLanguageType);
+}
+
 bool AppController::generatedCodeValid() const
 {
     return m_generatedCodeValid;
@@ -1407,11 +1457,23 @@ QString AppController::codeGenerationValidationSummary() const
     return m_codeGenerationValidationSummary;
 }
 
+QVariantList AppController::codeAssistantMessages() const
+{
+    return m_codeAssistantMessages;
+}
+
+bool AppController::codeAssistantBusy() const
+{
+    return m_codeAssistantBusy;
+}
+
 void AppController::setCodeGenerationOptions(
     const QVariantMap& options)
 {
     const QVariantMap normalizedOptions =
-        CodeGenerationOptions::fromVariantMap(options)
+        CodeGenerationProfile::optionsFor(
+            m_selectedLanguageType,
+            options)
             .toVariantMap();
 
     if (m_codeGenerationOptions == normalizedOptions)
@@ -1420,6 +1482,9 @@ void AppController::setCodeGenerationOptions(
     m_codeGenerationOptions = normalizedOptions;
 
     QSettings settings("DataBaseSettings", "Proteus");
+    settings.setValue(
+        codeGenerationSettingsKey(m_selectedLanguageType),
+        m_codeGenerationOptions);
     settings.setValue(
         "codeGeneration/options",
         m_codeGenerationOptions);
@@ -1441,12 +1506,26 @@ void AppController::setSelectedLanguage(int index)
     m_selectedLanguageType =
         language;
 
+    QSettings settings("DataBaseSettings", "Proteus");
+    m_codeGenerationOptions =
+        CodeGenerationProfile::optionsFor(
+            m_selectedLanguageType,
+            settings.value(
+                codeGenerationSettingsKey(m_selectedLanguageType))
+                .toMap())
+            .toVariantMap();
+
+    m_codeAssistantMessages.clear();
+    m_codeAssistantBusy = false;
+
     m_generatedCodeValid = false;
     m_codeGenerationValidationSummary =
         "Generate code for the selected language to run validation.";
 
     emit languageChanged();
+    emit codeGenerationSettingsChanged();
     emit generatedCodeValidationChanged();
+    emit codeAssistantChanged();
 }
 
 void AppController::setSelectedModel(const QString& model)
@@ -1763,7 +1842,8 @@ void AppController::onGenerateApplicationCode(
     const QVariantMap& optionValues)
 {
     const CodeGenerationOptions options =
-        CodeGenerationOptions::fromVariantMap(
+        CodeGenerationProfile::optionsFor(
+            m_selectedLanguageType,
             optionValues);
 
     if (options.requestedLayers().isEmpty())
@@ -1906,7 +1986,8 @@ bool AppController::validateGeneratedCode(
         CodeGenerationProfile::validateResponse(
             response,
             m_generationLanguageType,
-            CodeGenerationOptions::fromVariantMap(
+            CodeGenerationProfile::optionsFor(
+                m_generationLanguageType,
                 m_codeGenerationOptions),
             m_lastCodeGenerationTables);
 
@@ -1920,6 +2001,89 @@ bool AppController::validateGeneratedCode(
 
     emit generatedCodeValidationChanged();
     return m_generatedCodeValid;
+}
+
+void AppController::askCodeAssistant(
+    const QString& question,
+    const QString& generatedCode)
+{
+    const QString trimmedQuestion = question.trimmed();
+    if (trimmedQuestion.isEmpty() || m_codeAssistantBusy)
+        return;
+
+    m_codeAssistantMessages.append(QVariantMap{
+        {"role", "user"},
+        {"text", trimmedQuestion}
+    });
+
+    if (!m_aiEnvironmentReady)
+    {
+        m_codeAssistantMessages.append(QVariantMap{
+            {"role", "assistant"},
+            {"text", m_aiSetupInstructions}
+        });
+        emit codeAssistantChanged();
+        return;
+    }
+
+    const CodeGenerationOptions options =
+        CodeGenerationProfile::optionsFor(
+            m_selectedLanguageType,
+            m_codeGenerationOptions);
+    const QString dialect =
+        m_dataBaseManager->isConnected()
+            ? databaseDialectName(
+                  m_dataBaseManager->databaseDriver())
+            : "no connected database";
+    const QString schema =
+        m_dataBaseManager->isConnected()
+            ? m_dataBaseManager->buildSchemaDescription(
+                  activeNormalizationTables())
+            : "No database schema is connected.";
+    const QString codeExcerpt =
+        generatedCode.trimmed().isEmpty()
+            ? "No code has been generated yet."
+            : generatedCode.left(16000);
+
+    QString prompt =
+        "You are the ProteusManager project code assistant. "
+        "Answer the user's concrete architecture or implementation question for the current project. "
+        "Be concise, distinguish recommendations from requirements, and never claim generated code is guaranteed to compile. "
+        "Keep all database examples parameterized and never suggest concatenating user input into SQL. "
+        "Current language: "
+        + selectedLanguageName()
+        + ". Current database: "
+        + dialect
+        + ". Current generation settings: architecture="
+        + options.architecture
+        + ", databaseApi="
+        + options.databaseApi
+        + ", dataAccessPattern="
+        + options.dataAccessPattern
+        + ", layers="
+        + options.requestedLayers().join(", ")
+        + ".\n\nSchema:\n"
+        + schema
+        + "\n\nGenerated code excerpt:\n"
+        + codeExcerpt
+        + "\n\nUser question:\n"
+        + trimmedQuestion;
+
+    m_codeAssistantBusy = true;
+    emit codeAssistantChanged();
+    m_ollamaClient->generate(
+        m_selectedModel,
+        prompt,
+        OllamaClient::GenerateType::Assistant);
+}
+
+void AppController::clearCodeAssistant()
+{
+    if (m_codeAssistantBusy || m_codeAssistantMessages.isEmpty())
+        return;
+
+    m_codeAssistantMessages.clear();
+    emit codeAssistantChanged();
 }
 
 void AppController::onExportDalCode(const QString& response, const QString& outputPath)

@@ -72,6 +72,7 @@ qt_add_qml_module(DataBaseManager
         qml/NormalizationPage.qml
         qml/SchemaDiagramView.qml
         qml/SchemaTableNode.qml
+        qml/SettingHelpButton.qml
         SOURCES appcontroller.h appcontroller.cpp
 )
 

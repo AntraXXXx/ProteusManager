@@ -18,6 +18,7 @@ private slots:
     void reportsMissingOutputPath();
     void providesProfileForEveryLanguage_data();
     void providesProfileForEveryLanguage();
+    void adaptsSettingsToLanguageCapabilities();
     void acceptsSecureBindingForEveryLanguage_data();
     void acceptsSecureBindingForEveryLanguage();
     void validatesCompleteLayeredCode();
@@ -153,7 +154,10 @@ void DalGenerationTest::providesProfileForEveryLanguage()
     const auto language =
         static_cast<ProgrammingLanguage::ProgrammingLanguageType>(
             languageValue);
-    CodeGenerationOptions options;
+    const CodeGenerationOptions options =
+        CodeGenerationProfile::optionsFor(language);
+    const QVariantMap capabilities =
+        CodeGenerationProfile::capabilities(language);
 
     const QString prompt =
         CodeGenerationProfile::buildPromptInstructions(
@@ -164,10 +168,64 @@ void DalGenerationTest::providesProfileForEveryLanguage()
     QVERIFY(!prompt.isEmpty());
     QVERIFY(prompt.contains(
         ProgrammingLanguage::languageTypeToText(language)));
+    QVERIFY(!options.databaseApi.isEmpty());
+    QVERIFY(prompt.contains(options.databaseApi));
+    QVERIFY(!capabilities.value("architectures").toStringList().isEmpty());
+    QVERIFY(!capabilities.value("databaseApis").toStringList().isEmpty());
     QVERIFY(prompt.contains("prepared statements"));
     QVERIFY(
         CodeGenerationProfile::allowedExtensions(language)
             .contains(extension));
+}
+
+void DalGenerationTest::adaptsSettingsToLanguageCapabilities()
+{
+    using Type = ProgrammingLanguage::ProgrammingLanguageType;
+
+    const CodeGenerationOptions cOptions =
+        CodeGenerationProfile::optionsFor(
+            Type::C,
+            {
+                {"architecture", "Hexagonal"},
+                {"dataAccessPattern", "Repository"},
+                {"databaseApi", "Dapper"},
+                {"dto", true},
+                {"controller", true},
+                {"domainModel", true},
+                {"interfaces", true},
+                {"asyncOperations", true}
+            });
+
+    QCOMPARE(cOptions.architecture, QString("Procedural"));
+    QCOMPARE(cOptions.dataAccessPattern, QString("DAO"));
+    QCOMPARE(cOptions.databaseApi, QString("Native prepared API"));
+    QVERIFY(!cOptions.dto);
+    QVERIFY(!cOptions.controller);
+    QVERIFY(!cOptions.domainModel);
+    QVERIFY(!cOptions.interfaces);
+    QVERIFY(!cOptions.asyncOperations);
+
+    const CodeGenerationOptions csharpOptions =
+        CodeGenerationProfile::optionsFor(
+            Type::Csharp,
+            {
+                {"databaseApi", "Dapper"},
+                {"asyncOperations", true}
+            });
+    QCOMPARE(csharpOptions.databaseApi, QString("Dapper"));
+    QVERIFY(csharpOptions.asyncOperations);
+
+    const CodeGenerationOptions powershellOptions =
+        CodeGenerationProfile::optionsFor(
+            Type::Powershell,
+            {
+                {"architecture", "Script Module"},
+                {"dataAccessPattern", "Functions"}
+            });
+    QCOMPARE(powershellOptions.architecture, QString("Script Module"));
+    QCOMPARE(powershellOptions.dataAccessPattern, QString("Functions"));
+    QVERIFY(!powershellOptions.interfaces);
+    QVERIFY(!powershellOptions.asyncOperations);
 }
 
 void DalGenerationTest::acceptsSecureBindingForEveryLanguage_data()

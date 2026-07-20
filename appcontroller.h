@@ -50,8 +50,11 @@ class AppController : public QObject
     Q_PROPERTY(QVariantList normalizationBeforeSchema READ normalizationBeforeSchema NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantList normalizationAfterSchema READ normalizationAfterSchema NOTIFY normalizationChanged)
     Q_PROPERTY(QVariantMap codeGenerationOptions READ codeGenerationOptions WRITE setCodeGenerationOptions NOTIFY codeGenerationSettingsChanged)
+    Q_PROPERTY(QVariantMap codeGenerationCapabilities READ codeGenerationCapabilities NOTIFY codeGenerationSettingsChanged)
     Q_PROPERTY(bool generatedCodeValid READ generatedCodeValid NOTIFY generatedCodeValidationChanged)
     Q_PROPERTY(QString codeGenerationValidationSummary READ codeGenerationValidationSummary NOTIFY generatedCodeValidationChanged)
+    Q_PROPERTY(QVariantList codeAssistantMessages READ codeAssistantMessages NOTIFY codeAssistantChanged)
+    Q_PROPERTY(bool codeAssistantBusy READ codeAssistantBusy NOTIFY codeAssistantChanged)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -81,8 +84,11 @@ public:
     QVariantList normalizationBeforeSchema() const;
     QVariantList normalizationAfterSchema() const;
     QVariantMap codeGenerationOptions() const;
+    QVariantMap codeGenerationCapabilities() const;
     bool generatedCodeValid() const;
     QString codeGenerationValidationSummary() const;
+    QVariantList codeAssistantMessages() const;
+    bool codeAssistantBusy() const;
     void setCodeGenerationOptions(const QVariantMap& options);
 
     Q_INVOKABLE QStringList codeLanguages() const;
@@ -98,6 +104,10 @@ public:
     Q_INVOKABLE void onGenerateDalCode(bool secureAccess);
     Q_INVOKABLE void onGenerateApplicationCode(const QVariantMap& options);
     Q_INVOKABLE bool validateGeneratedCode(const QString& response);
+    Q_INVOKABLE void askCodeAssistant(
+        const QString& question,
+        const QString& generatedCode);
+    Q_INVOKABLE void clearCodeAssistant();
     Q_INVOKABLE void onExportDalCode(const QString& response, const QString& outputPath);
     Q_INVOKABLE QString onExecuteSqlCode(const QString& response);
     Q_INVOKABLE void setAddAuditFields(bool enabled);
@@ -141,6 +151,7 @@ signals:
     void normalizationChanged();
     void codeGenerationSettingsChanged();
     void generatedCodeValidationChanged();
+    void codeAssistantChanged();
 
 private:
     struct NormalizationVersion
@@ -183,6 +194,7 @@ private:
     QVariantList m_normalizationBeforeSchema;
     QVariantList m_normalizationAfterSchema;
     QVariantMap m_codeGenerationOptions;
+    QVariantList m_codeAssistantMessages;
     QStringList m_lastCodeGenerationTables;
     QVector<NormalizationVersion> m_normalizationHistory;
 
@@ -200,6 +212,7 @@ private:
     bool m_aiEnvironmentReady = false;
     bool m_normalizationReady = false;
     bool m_generatedCodeValid = false;
+    bool m_codeAssistantBusy = false;
     int m_normalizationRepairAttempts = 0;
     int m_codeGenerationRepairAttempts = 0;
     int m_activeNormalizationVersion = 0;
