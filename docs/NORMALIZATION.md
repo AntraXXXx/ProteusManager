@@ -2,6 +2,18 @@
 
 ProteusManager keeps the original database tables and stores each applied normal form as a separate schema version. Selecting a target generates and validates a migration preview. The connected database changes only after the user chooses Apply Normalization.
 
+## Flat Table Detection
+
+ProteusManager profiles identifier-like columns and repeated sample values without writing to the source database. A flat table with no primary key and several embedded identifiers is treated as 1NF migration evidence because the target relation still needs a key that uniquely identifies every row.
+
+For 2NF and higher, repeated determinants are compared with similarly named attributes. Evidence such as KundeID consistently determining KundeName and KundeEmail, or ProduktID consistently determining ProduktName, is included in the Ollama prompt and prevents an unsupported NO_CHANGES_REQUIRED result from being accepted. Identifier matching is case-insensitive, keeps the source language, and recognizes common identifier suffixes without translating generated names.
+
+These findings are conservative migration evidence, not permission to discard values. Ollama must still generate a lossless CREATE TABLE plus INSERT INTO ... SELECT migration, and the existing preview validator must accept it before Apply Normalization becomes available.
+
+Every created relation must declare a primary key or a suitable unique candidate key. For a flat source table without a declared key, the preview also verifies that all identifier-like columns remain represented in one connected target relationship graph and that every source column is read by the data-copy statements. Foreign-key columns must be populated explicitly.
+
+When source rows exist, every created target table must contain copied rows in the isolated preview. A migration that drops a value, disconnects an identifier association, leaves a foreign key unpopulated, or creates an empty target is rejected. Ollama receives the exact validation findings and may regenerate the complete migration in up to four bounded repair attempts.
+
 ## SQLite Preview Safety
 
 Generated SQLite migration SQL is never previewed on the live connection. ProteusManager creates a consistent temporary database with `VACUUM INTO`, opens a separate Qt SQL connection to that copy, executes the complete migration inside a transaction, checks foreign keys, and discards the copy.
@@ -38,4 +50,4 @@ A connected database without tables produces an explicit status message instead 
 
 ## Validation
 
-The automated regression scenario creates the reported German `Bestellungen` schema with three rows. It verifies that successful and failing 1NF previews leave the original table, schema, and all three rows unchanged. QML workflow coverage opens both diagram windows in a real `QQuickView` context.
+The automated regression scenarios create the reported German `Bestellungen` schema and the flat `Bestellungen_Flach` structure from `Test.db`, each with three rows. They verify dependency detection, key requirements, connected identifier relationships, and that successful and failing previews leave the source schema and rows unchanged. QML workflow coverage opens both diagram windows in a real `QQuickView` context.

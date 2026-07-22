@@ -320,6 +320,344 @@ bool columnNameSuggestsListValue(QString columnName)
            || columnName.contains("list");
 }
 
+QString compactIdentifier(const QString& identifier)
+{
+    QString compact;
+    compact.reserve(identifier.size());
+
+    for (const QChar character : identifier)
+    {
+        if (character.isLetterOrNumber())
+            compact.append(character.toLower());
+    }
+
+    return compact;
+}
+
+QString identifierSuffix(const QString& identifier)
+{
+    const QString compact =
+        compactIdentifier(identifier);
+    const QStringList suffixes = {
+        "identifier",
+        "identifikator",
+        "identifiant",
+        "identificador",
+        "nummer",
+        "number",
+        "codigo",
+        "codice",
+        "kennung",
+        "code",
+        "key",
+        "id",
+        "nr",
+        "no"
+    };
+
+    for (const QString& suffix : suffixes)
+    {
+        if (compact.endsWith(suffix)
+            && compact.size() > suffix.size() + 1)
+        {
+            return suffix;
+        }
+    }
+
+    return {};
+}
+
+QString identifierStem(const QString& identifier)
+{
+    QString compact =
+        compactIdentifier(identifier);
+    const QString suffix =
+        identifierSuffix(identifier);
+
+    if (!suffix.isEmpty())
+        compact.chop(suffix.size());
+
+    return compact;
+}
+
+int commonPrefixLength(
+    const QString& left,
+    const QString& right)
+{
+    const int limit =
+        qMin(left.size(), right.size());
+    int length = 0;
+
+    while (length < limit
+           && left.at(length) == right.at(length))
+    {
+        ++length;
+    }
+
+    return length;
+}
+
+bool sharesEntityStem(
+    const QString& identifierName,
+    const QString& attributeName)
+{
+    const QString stem =
+        identifierStem(identifierName);
+    const QString attribute =
+        compactIdentifier(attributeName);
+
+    if (stem.size() < 3
+        || attribute.size() < 3)
+    {
+        return false;
+    }
+
+    return attribute.startsWith(stem)
+           || stem.startsWith(attribute)
+           || commonPrefixLength(stem, attribute) >= 4;
+}
+
+QString profiledValueKey(const QVariant& value)
+{
+    if (!value.isValid() || value.isNull())
+        return "<null>";
+
+    return QString::number(value.metaType().id())
+           + ":"
+           + value.toString();
+}
+
+QStringList embeddedIdentifierNames(
+    const QVariantMap& table)
+{
+    QStringList names;
+
+    for (const QVariant& columnValue :
+         table.value("columns").toList())
+    {
+        const QVariantMap column =
+            columnValue.toMap();
+        if (!column.value("foreignKey").toBool()
+            && !identifierSuffix(
+                    column.value("name")
+                        .toString()).isEmpty())
+        {
+            names.append(
+                column.value("name").toString());
+        }
+    }
+
+    return names;
+}
+
+bool lacksDeclaredKeyWithEmbeddedIdentifiers(
+    const QVariantMap& table)
+{
+    bool hasPrimaryKey = false;
+    for (const QVariant& columnValue :
+         table.value("columns").toList())
+    {
+        hasPrimaryKey =
+            hasPrimaryKey
+            || columnValue.toMap()
+                   .value("primaryKey").toBool();
+    }
+
+    return !hasPrimaryKey
+           && embeddedIdentifierNames(table).size() >= 2;
+}
+
+QStringList flatDependencyDescriptions(
+    const QSqlDatabase& db,
+    const QVariantMap& table,
+    int profileLimit = 200)
+{
+    const QVariantList columns =
+        table.value("columns").toList();
+    QList<int> identifierColumns;
+    QStringList identifierNames;
+
+    for (int index = 0;
+         index < columns.size();
+         ++index)
+    {
+        const QVariantMap column =
+            columns.at(index).toMap();
+        const QString name =
+            column.value("name").toString();
+        if (column.value("foreignKey").toBool()
+            || identifierSuffix(name).isEmpty())
+        {
+            continue;
+        }
+
+        identifierColumns.append(index);
+        identifierNames.append(name);
+    }
+
+    QStringList descriptions;
+    if (lacksDeclaredKeyWithEmbeddedIdentifiers(table)
+        && identifierColumns.size() >= 2)
+    {
+        descriptions.append(
+            "no declared primary key and multiple embedded identifier candidates: "
+            + identifierNames.join(", "));
+    }
+
+    if (identifierColumns.isEmpty())
+        return descriptions;
+
+    const QString tableName =
+        table.value("name").toString();
+    const QString escapedTable =
+        escapeTableIdentifier(db, tableName);
+    const QString sampleSql =
+        db.driverName().startsWith("QODBC")
+            ? QString("SELECT TOP %1 * FROM %2")
+                  .arg(profileLimit)
+                  .arg(escapedTable)
+            : QString("SELECT * FROM %1 LIMIT %2")
+                  .arg(escapedTable)
+                  .arg(profileLimit);
+    QSqlQuery sampleQuery(db);
+    if (!sampleQuery.exec(sampleSql))
+        return descriptions;
+
+    QList<QVariantList> rows;
+    while (sampleQuery.next())
+    {
+        QVariantList row;
+        row.reserve(columns.size());
+        for (int index = 0;
+             index < columns.size();
+             ++index)
+        {
+            row.append(sampleQuery.value(index));
+        }
+        rows.append(row);
+    }
+
+    for (const int determinantIndex :
+         identifierColumns)
+    {
+        const QString determinantName =
+            columns.at(determinantIndex)
+                .toMap()
+                .value("name")
+                .toString();
+        QHash<QString, int> determinantCounts;
+
+        for (const QVariantList& row : rows)
+        {
+            const QVariant determinant =
+                row.value(determinantIndex);
+            if (!determinant.isValid()
+                || determinant.isNull())
+            {
+                continue;
+            }
+
+            const QString key =
+                profiledValueKey(determinant);
+            determinantCounts[key] =
+                determinantCounts.value(key) + 1;
+        }
+
+        bool hasRepeatedValue = false;
+        for (auto iterator =
+                 determinantCounts.cbegin();
+             iterator != determinantCounts.cend();
+             ++iterator)
+        {
+            if (iterator.value() > 1)
+            {
+                hasRepeatedValue = true;
+                break;
+            }
+        }
+
+        if (!hasRepeatedValue
+            || determinantCounts.size() < 2)
+        {
+            continue;
+        }
+
+        QStringList dependentAttributes;
+        for (int dependentIndex = 0;
+             dependentIndex < columns.size();
+             ++dependentIndex)
+        {
+            if (dependentIndex == determinantIndex)
+                continue;
+
+            const QVariantMap dependentColumn =
+                columns.at(dependentIndex).toMap();
+            const QString dependentName =
+                dependentColumn.value("name").toString();
+            if (!identifierSuffix(dependentName).isEmpty()
+                || !sharesEntityStem(
+                    determinantName,
+                    dependentName))
+            {
+                continue;
+            }
+
+            QHash<QString, QSet<QString>>
+                valuesByDeterminant;
+            QSet<QString> distinctValues;
+
+            for (const QVariantList& row : rows)
+            {
+                const QVariant determinant =
+                    row.value(determinantIndex);
+                if (!determinant.isValid()
+                    || determinant.isNull())
+                {
+                    continue;
+                }
+
+                const QString determinantKey =
+                    profiledValueKey(determinant);
+                const QString dependentValue =
+                    profiledValueKey(
+                        row.value(dependentIndex));
+                valuesByDeterminant[determinantKey]
+                    .insert(dependentValue);
+                distinctValues.insert(dependentValue);
+            }
+
+            bool functionallyDependent =
+                distinctValues.size() > 1;
+            for (auto iterator =
+                     valuesByDeterminant.cbegin();
+                 iterator != valuesByDeterminant.cend();
+                 ++iterator)
+            {
+                if (iterator.value().size() > 1)
+                {
+                    functionallyDependent = false;
+                    break;
+                }
+            }
+
+            if (functionallyDependent)
+                dependentAttributes.append(dependentName);
+        }
+
+        if (!dependentAttributes.isEmpty())
+        {
+            descriptions.append(
+                "repeated determinant "
+                + determinantName
+                + " consistently determines "
+                + dependentAttributes.join(", ")
+                + " in sampled rows");
+        }
+    }
+
+    return descriptions;
+}
+
 QVariantList parseCreatedTables(const QString& migrationSql)
 {
     QVariantList tables;
@@ -382,6 +720,8 @@ QVariantList parseCreatedTables(const QString& migrationSql)
         QVariantList relations;
         QSet<QString> tablePrimaryKeys;
         QSet<QString> tableUniqueColumns;
+        bool hasPrimaryKey = false;
+        bool hasUniqueKey = false;
         const QStringList definitions =
             splitTableDefinitions(createMatch.captured(2));
 
@@ -391,6 +731,7 @@ QVariantList parseCreatedTables(const QString& migrationSql)
                 tablePrimaryKey.match(definition);
             if (primaryMatch.hasMatch())
             {
+                hasPrimaryKey = true;
                 for (const QString& key : primaryMatch.captured(1).split(','))
                     tablePrimaryKeys.insert(cleanIdentifier(key).toLower());
                 continue;
@@ -400,6 +741,7 @@ QVariantList parseCreatedTables(const QString& migrationSql)
                 tableUnique.match(definition);
             if (uniqueMatch.hasMatch())
             {
+                hasUniqueKey = true;
                 const QStringList keys =
                     uniqueMatch.captured(1).split(
                         ',',
@@ -447,6 +789,9 @@ QVariantList parseCreatedTables(const QString& migrationSql)
 
             const bool primaryKey =
                 inlinePrimaryKey.match(suffix).hasMatch();
+            hasPrimaryKey = hasPrimaryKey || primaryKey;
+            hasUniqueKey = hasUniqueKey
+                           || inlineUnique.match(suffix).hasMatch();
             columns.append(columnEntry(
                 name,
                 columnMatch.captured(2),
@@ -484,6 +829,8 @@ QVariantList parseCreatedTables(const QString& migrationSql)
             {"name", cleanIdentifier(createMatch.captured(1))},
             {"columns", columns},
             {"relations", relations},
+            {"hasPrimaryKey", hasPrimaryKey},
+            {"hasUniqueKey", hasUniqueKey},
             {"proposed", true}
         });
     }
@@ -510,6 +857,7 @@ QVariantList parseCreatedTables(const QString& migrationSql)
             continue;
 
         QVariantMap table = tables.at(index).toMap();
+        table["hasUniqueKey"] = true;
         QVariantList columns =
             table.value("columns").toList();
         QVariantList relations =
@@ -540,6 +888,354 @@ QVariantList parseCreatedTables(const QString& migrationSql)
     }
 
     return tables;
+}
+
+QString firstUnkeyedCreatedTable(
+    const QString& migrationSql)
+{
+    for (const QVariant& tableValue :
+         parseCreatedTables(migrationSql))
+    {
+        const QVariantMap table = tableValue.toMap();
+        if (!table.value("hasPrimaryKey").toBool()
+            && !table.value("hasUniqueKey").toBool())
+        {
+            return table.value("name").toString();
+        }
+    }
+
+    return {};
+}
+
+QString identifierAssociationError(
+    const QVariantList& sourceSchema,
+    const QVariantList& targetTables)
+{
+    QHash<QString, QSet<QString>> adjacency;
+    QHash<QString, int> componentByTable;
+
+    for (const QVariant& tableValue : targetTables)
+    {
+        const QString tableName =
+            tableValue.toMap().value("name").toString();
+        adjacency.insert(tableName.toLower(), {});
+    }
+
+    for (const QVariant& tableValue : targetTables)
+    {
+        const QVariantMap table = tableValue.toMap();
+        const QString source =
+            table.value("name").toString().toLower();
+        for (const QVariant& relationValue :
+             table.value("relations").toList())
+        {
+            const QString target =
+                relationValue.toMap()
+                    .value("referenceTable")
+                    .toString()
+                    .toLower();
+            if (!adjacency.contains(target))
+                continue;
+
+            adjacency[source].insert(target);
+            adjacency[target].insert(source);
+        }
+    }
+
+    int component = 0;
+    for (auto iterator = adjacency.cbegin();
+         iterator != adjacency.cend();
+         ++iterator)
+    {
+        if (componentByTable.contains(iterator.key()))
+            continue;
+
+        QStringList pending{iterator.key()};
+        while (!pending.isEmpty())
+        {
+            const QString current = pending.takeLast();
+            if (componentByTable.contains(current))
+                continue;
+
+            componentByTable.insert(current, component);
+            for (const QString& related :
+                 adjacency.value(current))
+            {
+                if (!componentByTable.contains(related))
+                    pending.append(related);
+            }
+        }
+
+        ++component;
+    }
+
+    for (const QVariant& sourceValue : sourceSchema)
+    {
+        const QVariantMap sourceTable =
+            sourceValue.toMap();
+        if (!lacksDeclaredKeyWithEmbeddedIdentifiers(
+                sourceTable))
+        {
+            continue;
+        }
+
+        const QStringList identifiers =
+            embeddedIdentifierNames(sourceTable);
+        QSet<int> commonComponents;
+        bool firstIdentifier = true;
+
+        for (const QString& identifier : identifiers)
+        {
+            QSet<int> identifierComponents;
+            for (const QVariant& targetValue : targetTables)
+            {
+                const QVariantMap targetTable =
+                    targetValue.toMap();
+                const QString targetName =
+                    targetTable.value("name")
+                        .toString().toLower();
+
+                for (const QVariant& columnValue :
+                     targetTable.value("columns").toList())
+                {
+                    if (compactIdentifier(
+                            columnValue.toMap()
+                                .value("name").toString())
+                        == compactIdentifier(identifier))
+                    {
+                        identifierComponents.insert(
+                            componentByTable.value(
+                                targetName,
+                                -1));
+                    }
+                }
+            }
+
+            identifierComponents.remove(-1);
+            if (identifierComponents.isEmpty())
+            {
+                return "Migration does not preserve identifier '"
+                       + identifier
+                       + "' from source table '"
+                       + sourceTable.value("name").toString()
+                       + "'.";
+            }
+
+            if (firstIdentifier)
+            {
+                commonComponents = identifierComponents;
+                firstIdentifier = false;
+            }
+            else
+            {
+                commonComponents.intersect(
+                    identifierComponents);
+            }
+        }
+
+        if (commonComponents.isEmpty())
+        {
+            return "Migration disconnects the source identifier association in table '"
+                   + sourceTable.value("name").toString()
+                   + "' between "
+                   + identifiers.join(", ")
+                   + ".";
+        }
+    }
+
+    return {};
+}
+
+bool containsIdentifierToken(
+    const QString& sql,
+    const QString& identifier)
+{
+    const QString escaped =
+        QRegularExpression::escape(
+            cleanIdentifier(identifier));
+    const QRegularExpression token(
+        "(^|[^A-Za-z0-9_])[`\\\"\\[]?"
+            + escaped
+            + "[`\\\"\\]]?([^A-Za-z0-9_]|$)",
+        QRegularExpression::CaseInsensitiveOption);
+    return token.match(sql).hasMatch();
+}
+
+QStringList migrationCopyErrors(
+    const QVariantList& sourceSchema,
+    const QVariantList& targetTables,
+    const QString& migrationSql)
+{
+    const QString identifier =
+        "[`\\\"\\[]?[A-Za-z_][A-Za-z0-9_]*[`\\\"\\]]?";
+    const QRegularExpression insertSelect(
+        "\\bINSERT(?:\\s+OR\\s+IGNORE|\\s+IGNORE)?\\s+INTO\\s+("
+            + identifier
+            + ")\\s*(?:\\(([^)]*)\\))?[\\s\\S]*?\\bSELECT\\b([\\s\\S]*)$",
+        QRegularExpression::CaseInsensitiveOption);
+    QHash<QString, QSet<QString>> populatedColumns;
+    QString copiedSourceExpressions;
+
+    for (QString statement : sqlStatements(migrationSql))
+    {
+        statement = stripLeadingSqlComments(statement);
+        const QRegularExpressionMatch match =
+            insertSelect.match(statement.trimmed());
+        if (!match.hasMatch())
+            continue;
+
+        const QString targetName =
+            cleanIdentifier(match.captured(1));
+        const int targetIndex =
+            tableIndex(targetTables, targetName);
+        if (targetIndex < 0)
+            continue;
+
+        const QString targetKey =
+            targetName.toLower();
+        const QString columnList =
+            match.captured(2).trimmed();
+        if (columnList.isEmpty())
+        {
+            for (const QVariant& columnValue :
+                 targetTables.at(targetIndex)
+                     .toMap()
+                     .value("columns").toList())
+            {
+                populatedColumns[targetKey].insert(
+                    columnValue.toMap()
+                        .value("name").toString().toLower());
+            }
+        }
+        else
+        {
+            for (const QString& column :
+                 columnList.split(',', Qt::SkipEmptyParts))
+            {
+                populatedColumns[targetKey].insert(
+                    cleanIdentifier(column).toLower());
+            }
+        }
+
+        copiedSourceExpressions +=
+            "\n" + match.captured(3);
+    }
+
+    QStringList errors;
+    for (const QVariant& targetValue : targetTables)
+    {
+        const QVariantMap targetTable =
+            targetValue.toMap();
+        const QString targetName =
+            targetTable.value("name").toString();
+        const QString targetKey =
+            targetName.toLower();
+        if (!populatedColumns.contains(targetKey))
+        {
+            errors.append(
+                "Created table '" + targetName
+                + "' receives no INSERT INTO ... SELECT data copy.");
+            continue;
+        }
+
+        for (const QVariant& relationValue :
+             targetTable.value("relations").toList())
+        {
+            const QString foreignKey =
+                relationValue.toMap()
+                    .value("column").toString();
+            if (!populatedColumns.value(targetKey).contains(
+                    foreignKey.toLower()))
+            {
+                errors.append(
+                    "Data copy into created table '"
+                    + targetName
+                    + "' does not populate foreign-key column '"
+                    + foreignKey + "'.");
+            }
+        }
+    }
+
+    const bool selectsAllColumns =
+        QRegularExpression(
+            "(^|[^A-Za-z0-9_])\\*([^A-Za-z0-9_]|$)")
+            .match(copiedSourceExpressions)
+            .hasMatch();
+    if (!selectsAllColumns)
+    {
+        for (const QVariant& sourceValue : sourceSchema)
+        {
+            const QVariantMap sourceTable =
+                sourceValue.toMap();
+            if (!lacksDeclaredKeyWithEmbeddedIdentifiers(
+                    sourceTable))
+            {
+                continue;
+            }
+
+            for (const QVariant& columnValue :
+                 sourceTable.value("columns").toList())
+            {
+                const QString columnName =
+                    columnValue.toMap()
+                        .value("name").toString();
+                if (!containsIdentifierToken(
+                        copiedSourceExpressions,
+                        columnName))
+                {
+                    errors.append(
+                        "Source column '" + columnName
+                        + "' from table '"
+                        + sourceTable.value("name").toString()
+                        + "' is not read by any data-copy SELECT.");
+                }
+            }
+        }
+    }
+
+    return errors;
+}
+
+bool schemaHasRows(
+    const QSqlDatabase& db,
+    const QVariantList& schema)
+{
+    for (const QVariant& tableValue : schema)
+    {
+        const QString tableName =
+            tableValue.toMap().value("name").toString();
+        QSqlQuery query(db);
+        if (query.exec(
+                "SELECT 1 FROM "
+                + escapeTableIdentifier(db, tableName))
+            && query.next())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+QString firstEmptyCreatedTable(
+    const QSqlDatabase& db,
+    const QVariantList& targetTables)
+{
+    for (const QVariant& tableValue : targetTables)
+    {
+        const QString tableName =
+            tableValue.toMap().value("name").toString();
+        QSqlQuery query(db);
+        if (!query.exec(
+                "SELECT 1 FROM "
+                + escapeTableIdentifier(db, tableName))
+            || !query.next())
+        {
+            return tableName;
+        }
+    }
+
+    return {};
 }
 
 QString incompatibleMigrationFeature(
@@ -943,6 +1639,18 @@ QString DatabaseManager::buildNormalizationAnalysis(
                 result += "- " + group + "\n";
         }
 
+        const QStringList dependencyEvidence =
+            flatDependencyDescriptions(db, table);
+        if (!dependencyEvidence.isEmpty())
+        {
+            result += "Functional dependency evidence:\n";
+            for (const QString& dependency :
+                 dependencyEvidence)
+            {
+                result += "- " + dependency + "\n";
+            }
+        }
+
         QSqlQuery countQuery(db);
         if (countQuery.exec(
                 "SELECT COUNT(*) FROM " + escapedTable)
@@ -1061,7 +1769,8 @@ QString DatabaseManager::buildNormalizationAnalysis(
 }
 
 bool DatabaseManager::hasNormalizationEvidence(
-    const QStringList& tableNames)
+    const QStringList& tableNames,
+    const QString& targetForm)
 {
     QSqlDatabase db =
         QSqlDatabase::database(m_dataBaseConnectionName);
@@ -1085,6 +1794,20 @@ bool DatabaseManager::hasNormalizationEvidence(
         if (!repeatedColumnGroupDescriptions(table).isEmpty())
             return true;
 
+        if (lacksDeclaredKeyWithEmbeddedIdentifiers(table))
+            return true;
+        const bool requiresDependencyNormalization =
+            targetForm.isEmpty()
+            || targetForm.compare(
+                   "1NF",
+                   Qt::CaseInsensitive) != 0;
+        if (requiresDependencyNormalization
+            && !flatDependencyDescriptions(
+                    db,
+                    table).isEmpty())
+        {
+            return true;
+        }
         const QString escapedTable =
             escapeTableIdentifier(db, tableName);
         const QString sampleSql =
@@ -1632,7 +2355,8 @@ bool DatabaseManager::isValidMigrationSql(
 }
 
 bool DatabaseManager::validateMigrationPreview(
-    const QString& migrationSql)
+    const QString& migrationSql,
+    const QStringList& sourceTableNames)
 {
     if (!isValidMigrationSql(migrationSql))
     {
@@ -1648,6 +2372,41 @@ bool DatabaseManager::validateMigrationPreview(
         m_lastError = "Database is not open.";
         return false;
     }
+
+    const QVariantList sourceSchema =
+        sourceTableNames.isEmpty()
+            ? buildSchemaDiagram()
+            : buildSchemaDiagramForTables(
+                  sourceTableNames);
+    const QVariantList targetTables =
+        parseCreatedTables(migrationSql);
+    QStringList structureErrors;
+    const QString unkeyedTable =
+        firstUnkeyedCreatedTable(migrationSql);
+    if (!unkeyedTable.isEmpty())
+    {
+        structureErrors.append(
+            "Created table '" + unkeyedTable
+            + "' has no primary or unique key.");
+    }
+    const QString associationError =
+        identifierAssociationError(
+            sourceSchema,
+            targetTables);
+    if (!associationError.isEmpty())
+        structureErrors.append(associationError);
+    structureErrors.append(
+        migrationCopyErrors(
+            sourceSchema,
+            targetTables,
+            migrationSql));
+    if (!structureErrors.isEmpty())
+    {
+        m_lastError = structureErrors.join(" ");
+        return false;
+    }
+    const bool sourceContainsRows =
+        schemaHasRows(db, sourceSchema);
 
     const QString incompatibleFeature =
         incompatibleMigrationFeature(
@@ -1742,6 +2501,23 @@ bool DatabaseManager::validateMigrationPreview(
 
                 if (previewValid)
                 {
+                    const QString emptyTarget =
+                        sourceContainsRows
+                            ? firstEmptyCreatedTable(
+                                  previewDb,
+                                  targetTables)
+                            : QString();
+                    if (!emptyTarget.isEmpty())
+                    {
+                        m_lastError =
+                            "Created table '" + emptyTarget
+                            + "' contains no rows after the data copy.";
+                        previewValid = false;
+                    }
+                }
+
+                if (previewValid)
+                {
                     QSqlQuery foreignKeyCheck(
                         "PRAGMA foreign_key_check",
                         previewDb);
@@ -1809,6 +2585,20 @@ bool DatabaseManager::validateMigrationPreview(
         }
     }
 
+    if (sourceContainsRows)
+    {
+        const QString emptyTarget =
+            firstEmptyCreatedTable(db, targetTables);
+        if (!emptyTarget.isEmpty())
+        {
+            m_lastError =
+                "Created table '" + emptyTarget
+                + "' contains no rows after the data copy.";
+            db.rollback();
+            return false;
+        }
+    }
+
     if (!db.rollback())
     {
         m_lastError =
@@ -1822,7 +2612,8 @@ bool DatabaseManager::validateMigrationPreview(
 }
 
 bool DatabaseManager::executeMigration(
-    const QString& migrationSql)
+    const QString& migrationSql,
+    const QStringList& sourceTableNames)
 {
     if (!isValidMigrationSql(migrationSql))
     {
@@ -1840,6 +2631,41 @@ bool DatabaseManager::executeMigration(
         m_lastError = "Database is not open.";
         return false;
     }
+
+    const QVariantList sourceSchema =
+        sourceTableNames.isEmpty()
+            ? buildSchemaDiagram()
+            : buildSchemaDiagramForTables(
+                  sourceTableNames);
+    const QVariantList targetTables =
+        parseCreatedTables(migrationSql);
+    QStringList structureErrors;
+    const QString unkeyedTable =
+        firstUnkeyedCreatedTable(migrationSql);
+    if (!unkeyedTable.isEmpty())
+    {
+        structureErrors.append(
+            "Created table '" + unkeyedTable
+            + "' has no primary or unique key.");
+    }
+    const QString associationError =
+        identifierAssociationError(
+            sourceSchema,
+            targetTables);
+    if (!associationError.isEmpty())
+        structureErrors.append(associationError);
+    structureErrors.append(
+        migrationCopyErrors(
+            sourceSchema,
+            targetTables,
+            migrationSql));
+    if (!structureErrors.isEmpty())
+    {
+        m_lastError = structureErrors.join(" ");
+        return false;
+    }
+    const bool sourceContainsRows =
+        schemaHasRows(db, sourceSchema);
 
     if (!db.transaction())
     {
@@ -1863,6 +2689,20 @@ bool DatabaseManager::executeMigration(
         {
             m_lastError =
                 query.lastError().text();
+            db.rollback();
+            return false;
+        }
+    }
+
+    if (sourceContainsRows)
+    {
+        const QString emptyTarget =
+            firstEmptyCreatedTable(db, targetTables);
+        if (!emptyTarget.isEmpty())
+        {
+            m_lastError =
+                "Created table '" + emptyTarget
+                + "' contains no rows after the data copy.";
             db.rollback();
             return false;
         }
