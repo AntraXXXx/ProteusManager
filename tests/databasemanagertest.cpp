@@ -79,12 +79,14 @@ private slots:
     void startsDisconnected();
     void validatesSqlByStatementType();
     void validatesLosslessMigrationSql();
+    void rejectsUnkeyedMigrationPreview();
     void executesMigrationTransactionally();
     void executesCteMigrationTransactionally();
     void opensDatabaseAndIntrospectsSchema();
     void buildsSchemaDiagramsWithRelations();
     void buildsLanguageNeutralNormalizationAnalysis();
     void detectsNumberedNormalizationEvidence();
+    void detectsFlatEntityDependencies();
     void previewsGermanOrdersOnIsolatedCopy();
 };
 
@@ -158,7 +160,7 @@ void DatabaseManagerTest::executesMigrationTransactionally()
 
         const QString migration =
             "CREATE TABLE CustomerAddress ("
-            "customerId INTEGER, city TEXT);"
+            "customerId INTEGER PRIMARY KEY, city TEXT);"
             "INSERT INTO CustomerAddress (customerId, city) "
             "SELECT id, city FROM Customer;";
 
@@ -169,13 +171,68 @@ void DatabaseManagerTest::executesMigrationTransactionally()
         QVERIFY(manager.hasRows("CustomerAddress"));
 
         const QString failingMigration =
-            "CREATE TABLE BrokenCopy (id INTEGER);"
+            "CREATE TABLE BrokenCopy (id INTEGER PRIMARY KEY);"
             "INSERT INTO BrokenCopy (id) "
             "SELECT missingColumn FROM Customer;";
 
         QVERIFY(!manager.executeMigration(failingMigration));
         QVERIFY(!manager.tableExists("BrokenCopy"));
         QVERIFY(manager.hasRows("Customer"));
+    }
+
+    removeConnection(connectionName);
+}
+
+void DatabaseManagerTest::rejectsUnkeyedMigrationPreview()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const QString connectionName = createConnectionName();
+    const QString databasePath =
+        tempDir.filePath("key-validation-test.sqlite");
+
+    {
+        DatabaseManager manager;
+        QVERIFY(manager.openDatabase(connectionName, databasePath));
+        QVERIFY(manager.executeQuery(
+            "CREATE TABLE SourceRows ("
+            "id INTEGER PRIMARY KEY, value TEXT);"
+            "INSERT INTO SourceRows VALUES (1, 'one');"));
+
+        const QString unkeyedMigration =
+            "CREATE TABLE UnkeyedCopy (id INTEGER, value TEXT);"
+            "INSERT INTO UnkeyedCopy "
+            "SELECT id, value FROM SourceRows;";
+        QVERIFY(!manager.validateMigrationPreview(
+            unkeyedMigration));
+        QVERIFY(manager.lastError().contains(
+            "has no primary or unique key"));
+        QVERIFY(!manager.executeMigration(
+            unkeyedMigration));
+        QVERIFY(!manager.tableExists("UnkeyedCopy"));
+
+        const QString keyedMigration =
+            "CREATE TABLE KeyedCopy ("
+            "source_id INTEGER, value TEXT, "
+            "UNIQUE(source_id, value));"
+            "INSERT INTO KeyedCopy "
+            "SELECT id, value FROM SourceRows;";
+        QVERIFY2(
+            manager.validateMigrationPreview(
+                keyedMigration),
+            qPrintable(manager.lastError()));
+        QVERIFY(!manager.tableExists("KeyedCopy"));
+
+        const QString emptyMigration =
+            "CREATE TABLE EmptyCopy (id INTEGER PRIMARY KEY);"
+            "INSERT INTO EmptyCopy "
+            "SELECT id FROM SourceRows WHERE 1 = 0;";
+        QVERIFY(!manager.validateMigrationPreview(
+            emptyMigration));
+        QVERIFY(manager.lastError().contains(
+            "contains no rows after the data copy"));
+        QVERIFY(!manager.tableExists("EmptyCopy"));
     }
 
     removeConnection(connectionName);
@@ -218,7 +275,8 @@ void DatabaseManagerTest::executesCteMigrationTransactionally()
         QVERIFY(manager.hasRows("SourceValues"));
 
         const QString incompatibleMigration =
-            "CREATE TABLE InvalidDialect (position INTEGER);"
+            "CREATE TABLE InvalidDialect ("
+            "position INTEGER PRIMARY KEY);"
             "INSERT INTO InvalidDialect(position) "
             "SELECT CHARINDEX(',', valueList) FROM SourceValues;";
         QVERIFY(manager.isValidMigrationSql(incompatibleMigration));
@@ -522,6 +580,158 @@ void DatabaseManagerTest::detectsNumberedNormalizationEvidence()
     removeConnection(connectionName);
 }
 
+void DatabaseManagerTest::detectsFlatEntityDependencies()
+{
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const QString connectionName = createConnectionName();
+    const QString databasePath =
+        tempDir.filePath("flat-orders-normalization-test.sqlite");
+
+    {
+        DatabaseManager manager;
+        QVERIFY(manager.openDatabase(connectionName, databasePath));
+        QVERIFY(manager.executeQuery(
+            "CREATE TABLE Bestellungen_Flach ("
+            "BestellungsID INT, Bestelldatum DATE, "
+            "KundeID INT, KundeName VARCHAR(100), "
+            "KundeEmail VARCHAR(100), ProduktID INT, "
+            "ProduktName VARCHAR(100), Preis DECIMAL(10, 2), "
+            "Menge INT, GesamtPreis DECIMAL(10, 2));"
+            "INSERT INTO Bestellungen_Flach VALUES "
+            "(101, '2026-07-22', 1, 'Max Mustermann', "
+            "'max@test.de', 505, 'Laptop', 1200, 1, 1200),"
+            "(101, '2026-07-22', 1, 'Max Mustermann', "
+            "'max@test.de', 506, 'Maus', 50, 2, 100),"
+            "(102, '2026-07-22', 2, 'Anna Schmidt', "
+            "'anna@test.de', 505, 'Laptop', 1200, 1, 1200);"));
+
+        const QVariantList beforeSchema =
+            manager.buildSchemaDiagram();
+        const QString analysis =
+            manager.buildNormalizationAnalysis({}, 5);
+
+        QVERIFY(analysis.contains(
+            "Functional dependency evidence"));
+        QVERIFY(analysis.contains(
+            "no declared primary key and multiple embedded identifier candidates"));
+        QVERIFY(analysis.contains(
+            "repeated determinant KundeID"));
+        QVERIFY(analysis.contains("KundeName"));
+        QVERIFY(analysis.contains("KundeEmail"));
+        QVERIFY(analysis.contains(
+            "repeated determinant ProduktID"));
+        QVERIFY(analysis.contains("ProduktName"));
+
+        QVERIFY(manager.hasNormalizationEvidence(
+            {},
+            "1NF"));
+        QVERIFY(manager.hasNormalizationEvidence(
+            {},
+            "2NF"));
+        QVERIFY(manager.hasNormalizationEvidence(
+            {},
+            "3NF"));
+
+        QCOMPARE(
+            manager.buildSchemaDiagram(),
+            beforeSchema);
+        QSqlQuery rowCount(
+            "SELECT COUNT(*) FROM Bestellungen_Flach",
+            QSqlDatabase::database(connectionName));
+        QVERIFY(rowCount.next());
+        QCOMPARE(rowCount.value(0).toInt(), 3);
+        rowCount.finish();
+
+        const QString disconnectedMigration =
+            "CREATE TABLE Kunden ("
+            "KundeID INT PRIMARY KEY, KundeName TEXT, KundeEmail TEXT);"
+            "CREATE TABLE Produkte ("
+            "ProduktID INT PRIMARY KEY, ProduktName TEXT);"
+            "CREATE TABLE Bestellungen ("
+            "BestellungsID INT PRIMARY KEY, Bestelldatum DATE);"
+            "CREATE TABLE Bestellpositionen ("
+            "BestellungsID INT, ProduktID INT, Preis REAL, Menge INT, "
+            "GesamtPreis REAL, PRIMARY KEY (BestellungsID, ProduktID), "
+            "FOREIGN KEY (BestellungsID) REFERENCES Bestellungen(BestellungsID), "
+            "FOREIGN KEY (ProduktID) REFERENCES Produkte(ProduktID));"
+            "INSERT INTO Kunden SELECT DISTINCT "
+            "KundeID, KundeName, KundeEmail FROM Bestellungen_Flach;"
+            "INSERT INTO Produkte SELECT DISTINCT "
+            "ProduktID, ProduktName FROM Bestellungen_Flach;"
+            "INSERT INTO Bestellungen SELECT DISTINCT "
+            "BestellungsID, Bestelldatum FROM Bestellungen_Flach;"
+            "INSERT INTO Bestellpositionen SELECT "
+            "BestellungsID, ProduktID, Preis, Menge, GesamtPreis "
+            "FROM Bestellungen_Flach;";
+        QVERIFY(!manager.validateMigrationPreview(
+            disconnectedMigration,
+            {"Bestellungen_Flach"}));
+        QVERIFY(manager.lastError().contains(
+            "disconnects the source identifier association"));
+
+        const QString incompleteCopyMigration =
+            "CREATE TABLE Kunden ("
+            "KundeID INT PRIMARY KEY, KundeName TEXT, KundeEmail TEXT);"
+            "CREATE TABLE Produkte ("
+            "ProduktID INT PRIMARY KEY, ProduktName TEXT);"
+            "CREATE TABLE Bestellungen ("
+            "BestellungsID INT PRIMARY KEY, Bestelldatum DATE, KundeID INT, "
+            "FOREIGN KEY (KundeID) REFERENCES Kunden(KundeID));"
+            "CREATE TABLE Bestellpositionen ("
+            "BestellungsID INT, ProduktID INT, Menge INT, GesamtPreis REAL, "
+            "PRIMARY KEY (BestellungsID, ProduktID), "
+            "FOREIGN KEY (BestellungsID) REFERENCES Bestellungen(BestellungsID), "
+            "FOREIGN KEY (ProduktID) REFERENCES Produkte(ProduktID));"
+            "INSERT INTO Kunden SELECT DISTINCT "
+            "KundeID, KundeName, KundeEmail FROM Bestellungen_Flach;"
+            "INSERT INTO Produkte SELECT DISTINCT "
+            "ProduktID, ProduktName FROM Bestellungen_Flach;"
+            "INSERT INTO Bestellungen (BestellungsID, Bestelldatum) "
+            "SELECT DISTINCT BestellungsID, Bestelldatum FROM Bestellungen_Flach;"
+            "INSERT INTO Bestellpositionen SELECT "
+            "BestellungsID, ProduktID, Menge, GesamtPreis "
+            "FROM Bestellungen_Flach;";
+        QVERIFY(!manager.validateMigrationPreview(
+            incompleteCopyMigration,
+            {"Bestellungen_Flach"}));
+        QVERIFY(manager.lastError().contains(
+            "foreign-key column 'KundeID'"));
+        QVERIFY(manager.lastError().contains(
+            "Source column 'Preis'"));
+
+        const QString connectedMigration =
+            "CREATE TABLE Kunden ("
+            "KundeID INT PRIMARY KEY, KundeName TEXT, KundeEmail TEXT);"
+            "CREATE TABLE Produkte ("
+            "ProduktID INT PRIMARY KEY, ProduktName TEXT);"
+            "CREATE TABLE Bestellungen ("
+            "BestellungsID INT PRIMARY KEY, Bestelldatum DATE, KundeID INT, "
+            "FOREIGN KEY (KundeID) REFERENCES Kunden(KundeID));"
+            "CREATE TABLE Bestellpositionen ("
+            "BestellungsID INT, ProduktID INT, Preis REAL, Menge INT, "
+            "GesamtPreis REAL, PRIMARY KEY (BestellungsID, ProduktID), "
+            "FOREIGN KEY (BestellungsID) REFERENCES Bestellungen(BestellungsID), "
+            "FOREIGN KEY (ProduktID) REFERENCES Produkte(ProduktID));"
+            "INSERT INTO Kunden SELECT DISTINCT "
+            "KundeID, KundeName, KundeEmail FROM Bestellungen_Flach;"
+            "INSERT INTO Produkte SELECT DISTINCT "
+            "ProduktID, ProduktName FROM Bestellungen_Flach;"
+            "INSERT INTO Bestellungen SELECT DISTINCT "
+            "BestellungsID, Bestelldatum, KundeID FROM Bestellungen_Flach;"
+            "INSERT INTO Bestellpositionen SELECT "
+            "BestellungsID, ProduktID, Preis, Menge, GesamtPreis "
+            "FROM Bestellungen_Flach;";
+        QVERIFY2(
+            manager.validateMigrationPreview(
+                connectedMigration,
+                {"Bestellungen_Flach"}),
+            qPrintable(manager.lastError()));
+    }
+
+    removeConnection(connectionName);
+}
 void DatabaseManagerTest::previewsGermanOrdersOnIsolatedCopy()
 {
     QTemporaryDir tempDir;
@@ -567,7 +777,8 @@ void DatabaseManagerTest::previewsGermanOrdersOnIsolatedCopy()
             "CREATE TABLE Bestellung_1NF ("
             "BestellungID INT, Bestelldatum DATE, "
             "KundeName VARCHAR(100), ArtikelName VARCHAR(100), "
-            "BestellteMenge INT);"
+            "BestellteMenge INT, "
+            "PRIMARY KEY (BestellungID, ArtikelName));"
             "INSERT INTO Bestellung_1NF "
             "SELECT BestellungID, Bestelldatum, KundeName, "
             "ArtikelName, BestellteMenge FROM Bestellungen;";
@@ -587,7 +798,7 @@ void DatabaseManagerTest::previewsGermanOrdersOnIsolatedCopy()
         preservedRows.finish();
 
         const QString failingMigration =
-            "CREATE TABLE Broken_1NF (id INT);"
+            "CREATE TABLE Broken_1NF (id INT PRIMARY KEY);"
             "INSERT INTO Broken_1NF "
             "SELECT MissingColumn FROM Bestellungen;";
         QVERIFY(!manager.validateMigrationPreview(failingMigration));
