@@ -684,11 +684,20 @@ bool AppController::refreshNormalizationDiagrams()
         m_normalizationBeforeSchema =
             m_dataBaseManager->buildSchemaDiagram();
 
-    if (m_normalizationReady
-        && !m_normalizationOutput.isEmpty()
-        && m_normalizationOutput.compare(
-               "NO_CHANGES_REQUIRED",
-               Qt::CaseInsensitive) != 0)
+    if (m_pendingNormalizationVersion >= 0
+        && m_pendingNormalizationVersion
+               < m_normalizationHistory.size())
+    {
+        m_normalizationAfterSchema =
+            m_dataBaseManager->buildSchemaDiagramForTables(
+                m_normalizationHistory.at(
+                    m_pendingNormalizationVersion).tableNames);
+    }
+    else if (m_normalizationReady
+             && !m_normalizationOutput.isEmpty()
+             && m_normalizationOutput.compare(
+                    "NO_CHANGES_REQUIRED",
+                    Qt::CaseInsensitive) != 0)
     {
         m_normalizationAfterSchema =
             m_dataBaseManager->buildSchemaDiagramWithMigration(
@@ -1334,8 +1343,14 @@ QString AppController::onApplyNormalization()
         m_dataBaseManager->buildSchemaDiagramForTables(
             sourceNormalizationTables());
     m_normalizationAfterSchema =
-        m_dataBaseManager->buildSchemaDiagramWithMigration(
-            m_lastAppliedNormalizationSql);
+        m_dataBaseManager->buildSchemaDiagramForTables(
+            targetTables);
+    if (m_normalizationAfterSchema.isEmpty())
+    {
+        m_normalizationAfterSchema =
+            m_dataBaseManager->buildSchemaDiagramWithMigration(
+                m_lastAppliedNormalizationSql);
+    }
     m_normalizationStatus =
         m_appliedNormalizationForm
         + " applied successfully. Existing source data was retained.";
