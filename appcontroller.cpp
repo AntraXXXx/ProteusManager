@@ -4,6 +4,8 @@
 
 namespace
 {
+constexpr int MaxNormalizationRepairAttempts = 4;
+
 QString driverKeyFromDisplayName(const QString& driverName)
 {
     if (driverName.contains("PostgreSQL", Qt::CaseInsensitive))
@@ -74,7 +76,7 @@ QString normalizationDialectRules(const QString& driverName)
 QString normalizationGoal(const QString& form)
 {
     if (form == "1NF")
-        return "Make every value atomic and remove repeating groups.";
+        return "Make every value atomic, remove repeating groups, and define a key that uniquely identifies each row.";
 
     if (form == "2NF")
         return "Satisfy 1NF and remove partial dependencies on composite keys.";
@@ -504,16 +506,19 @@ void AppController::handleNormalizationResponse(
     m_normalizationReady =
         !noChangesRequired
         && m_dataBaseManager->validateMigrationPreview(
-            m_normalizationOutput);
+            m_normalizationOutput,
+            m_normalizationInputTables);
 
     if (noChangesRequired)
     {
         if (m_dataBaseManager->hasNormalizationEvidence(
                 m_normalizationInputTables.isEmpty()
                     ? sourceNormalizationTables()
-                    : m_normalizationInputTables))
+                    : m_normalizationInputTables,
+                m_selectedNormalizationForm))
         {
-            if (m_normalizationRepairAttempts == 0
+            if (m_normalizationRepairAttempts
+                    < MaxNormalizationRepairAttempts
                 && m_aiEnvironmentReady)
             {
                 ++m_normalizationRepairAttempts;
@@ -524,10 +529,11 @@ void AppController::handleNormalizationResponse(
                 const QString repairPrompt =
                     m_normalizationPrompt
                     + "\n\nYour previous answer was NO_CHANGES_REQUIRED, but the local analyzer found normalization evidence. "
-                      "This includes denormalized table names, numbered repeating column groups such as produkt_1_name/produkt_2_name, or aligned list values. "
+                      "This includes denormalized table names, missing keys with multiple embedded identifiers, repeated determinants with stable dependent attributes, numbered repeating column groups such as produkt_1_name/produkt_2_name, or aligned list values. "
                       "Generate a real, lossless migration for "
                     + m_selectedNormalizationForm
                     + ". Do not return NO_CHANGES_REQUIRED unless no repeating groups, no transitive dependencies and no denormalized naming evidence remain. "
+                      "Preserve every association between identifier columns from each source row, make all original tuples exactly reconstructable by joins, and give every created table a primary or unique key. "
                       "Preserve all existing data and keep the SQL dialect rules from the original request.";
 
                 m_ollamaClient->generate(
@@ -573,18 +579,24 @@ void AppController::handleNormalizationResponse(
         const QString validationError =
             m_dataBaseManager->lastError();
 
-        if (m_normalizationRepairAttempts == 0
+        if (m_normalizationRepairAttempts
+                < MaxNormalizationRepairAttempts
             && m_aiEnvironmentReady)
         {
             ++m_normalizationRepairAttempts;
             m_normalizationStatus =
-                "The first migration did not match the selected SQL dialect. Asking the AI to correct it...";
+                "The generated migration failed validation. Asking the AI to repair it (attempt "
+                + QString::number(m_normalizationRepairAttempts)
+                + " of "
+                + QString::number(MaxNormalizationRepairAttempts)
+                + ")...";
             emit normalizationChanged();
 
             const QString repairPrompt =
                 m_normalizationPrompt
                 + "\n\nThe previous migration failed validation for the connected database. "
-                  "Correct the SQL without changing the requested normal form or losing data. "
+                  "Regenerate the complete migration and address every validation error. "
+                  "Do not merely repeat the previous SQL. Do not change the requested normal form or lose data. "
                   "Validation error: "
                 + validationError
                 + "\nPrevious migration:\n"
@@ -1209,16 +1221,19 @@ void AppController::onGenerateNormalization(
           "When multiple columns contain aligned lists, split them by ordinal into atomic child rows without changing their pairing. "
           "Infer functional dependencies only when supported by keys, relationships, identifier meaning, repeated values or samples. "
           "Preserve every original atomic value in the normalized target tables. "
+          "Every original source tuple over all source columns must be exactly reconstructable from the created tables by joins. "
+          "Preserve every association between identifier-like columns occurring in the same source row, even when the sample rows accidentally look one-to-one. "
+          "When relationship cardinality is uncertain, retain the identifier association in a child or junction table instead of disconnecting entities. "
           "Only normalize the input schema tables supplied below. Ignore retained versions that are not listed. "
           "Existing data must never be deleted, overwritten or truncated. "
           "Keep every existing source table and every existing row unchanged. "
           "Create new normalized tables with clear names and copy data using INSERT INTO ... SELECT. "
           "Do not CREATE a table with a name that already exists in the input schema. "
           "Use SELECT DISTINCT only when it does not remove semantically different rows. "
-          "Create primary keys, unique constraints, foreign keys and indexes where justified by the schema. "
+          "Every created table must declare a primary key or a suitable UNIQUE candidate key. Create foreign keys and indexes where justified by the schema. "
           "Do not claim that normalization is complete when sample rows still contain supported repeating groups. "
           "Return NO_CHANGES_REQUIRED only when the schema and supplied data evidence already satisfy the selected form. "
-          "NO_CHANGES_REQUIRED is forbidden when the analysis reports denormalized table names, repeated numbered column groups, aligned list values or embedded dependent entities. "
+          "NO_CHANGES_REQUIRED is forbidden when the analysis reports denormalized table names, missing keys with embedded identifiers, repeated determinants, repeated numbered column groups, aligned list values or embedded dependent entities. "
           "If a dependency is uncertain, preserve the involved values in a lossless child relation instead of discarding or merging them. "
           "Allowed statements are CREATE TABLE, CREATE INDEX, INSERT INTO ... SELECT, common table expressions used by INSERT INTO ... SELECT, and safe ALTER TABLE ADD or RENAME. "
           "Never output DROP, DELETE, TRUNCATE, UPDATE, REPLACE, ATTACH, DETACH or VACUUM. "
@@ -1313,7 +1328,8 @@ QString AppController::onApplyNormalization()
     }
 
     if (!m_dataBaseManager->executeMigration(
-            m_normalizationOutput))
+            m_normalizationOutput,
+            m_normalizationInputTables))
     {
         m_normalizationStatus =
             "Migration rolled back: "

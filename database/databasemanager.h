@@ -25,8 +25,12 @@ public:
     bool hasRows(const QString& tableName);
     bool isValidSql(const QString& sql);
     bool isValidMigrationSql(const QString& sql) const;
-    bool validateMigrationPreview(const QString& migrationSql);
-    bool executeMigration(const QString& migrationSql);
+    bool validateMigrationPreview(
+        const QString& migrationSql,
+        const QStringList& sourceTableNames = {});
+    bool executeMigration(
+        const QString& migrationSql,
+        const QStringList& sourceTableNames = {});
     void setConnection(const bool connected);
     void setDatabasePath(const QString& path);
     QString getSqlConnectionName() const;
@@ -36,7 +40,8 @@ public:
         const QStringList& tableNames = {},
         int sampleLimit = 5);
     bool hasNormalizationEvidence(
-        const QStringList& tableNames = {});
+        const QStringList& tableNames = {},
+        const QString& targetForm = {});
     QStringList getColumnNames(const QString& tableName);
     QStringList getTableNames();
     QVariantList buildSchemaDiagram();
