@@ -188,14 +188,36 @@ public:
     {
         m_selectedNormalizationForm = form;
         m_normalizationOutput =
-            "CREATE TABLE CustomerAddress (customerId INTEGER, city TEXT);";
+            "CREATE TABLE OrderItem (id INTEGER PRIMARY KEY);";
         m_normalizationStatus = "Migration preview is ready.";
         m_normalizationReady = true;
         m_normalizationAfterSchema = m_normalizationBeforeSchema;
         m_normalizationAfterSchema.append(QVariantMap{
-            {"name", "CustomerAddress"},
-            {"columns", QVariantList{}},
-            {"relations", QVariantList{}},
+            {"name", "OrderItem"},
+            {"columns", QVariantList{
+                 QVariantMap{
+                     {"name", "id"}, {"type", "INTEGER"},
+                     {"primaryKey", true}, {"foreignKey", false},
+                     {"unique", true}, {"nullable", false}
+                 },
+                 QVariantMap{
+                     {"name", "orderId"}, {"type", "INTEGER"},
+                     {"primaryKey", false}, {"foreignKey", true},
+                     {"unique", false}, {"nullable", false},
+                     {"referenceTable", "Order"},
+                     {"referenceColumn", "id"}
+                 }
+             }},
+            {"relations", QVariantList{
+                 QVariantMap{
+                     {"column", "orderId"},
+                     {"referenceTable", "Order"},
+                     {"referenceColumn", "id"},
+                     {"sourceCardinality", "0..*"},
+                     {"targetCardinality", "1"},
+                     {"identifying", false}
+                 }
+             }},
             {"proposed", true}
         });
         emit normalizationChanged();
@@ -219,7 +241,10 @@ public:
 
     Q_INVOKABLE QString onResetNormalization()
     {
-        m_normalizationStatus = "Reset preview is ready.";
+        m_selectedNormalizationForm = "1NF";
+        if (m_normalizationAfterSchema.size() > 3)
+            m_normalizationAfterSchema.removeLast();
+        m_normalizationStatus = "Previous version preview is ready.";
         m_normalizationReady = true;
         emit normalizationChanged();
         return m_normalizationStatus;
@@ -228,6 +253,21 @@ public:
     Q_INVOKABLE QString onAdvanceNormalization()
     {
         m_selectedNormalizationForm = "2NF";
+        if (m_normalizationAfterSchema.size() == 3)
+        {
+            m_normalizationAfterSchema.append(QVariantMap{
+                {"name", "Product"},
+                {"columns", QVariantList{
+                     QVariantMap{
+                         {"name", "id"}, {"type", "INTEGER"},
+                         {"primaryKey", true}, {"foreignKey", false},
+                         {"unique", true}, {"nullable", false}
+                     }
+                 }},
+                {"relations", QVariantList{}},
+                {"proposed", true}
+            });
+        }
         m_normalizationStatus = "Next version preview is ready.";
         m_normalizationReady = true;
         emit normalizationChanged();
@@ -379,8 +419,47 @@ private:
     QVariantList m_normalizationBeforeSchema = {
         QVariantMap{
             {"name", "Customer"},
-            {"columns", QVariantList{}},
+            {"columns", QVariantList{
+                 QVariantMap{
+                     {"name", "id"}, {"type", "INTEGER"},
+                     {"primaryKey", true}, {"foreignKey", false},
+                     {"unique", true}, {"nullable", false}
+                 },
+                 QVariantMap{
+                     {"name", "name"}, {"type", "TEXT"},
+                     {"primaryKey", false}, {"foreignKey", false},
+                     {"unique", false}, {"nullable", true}
+                 }
+             }},
             {"relations", QVariantList{}},
+            {"proposed", false}
+        },
+        QVariantMap{
+            {"name", "Order"},
+            {"columns", QVariantList{
+                 QVariantMap{
+                     {"name", "id"}, {"type", "INTEGER"},
+                     {"primaryKey", true}, {"foreignKey", false},
+                     {"unique", true}, {"nullable", false}
+                 },
+                 QVariantMap{
+                     {"name", "customerId"}, {"type", "INTEGER"},
+                     {"primaryKey", false}, {"foreignKey", true},
+                     {"unique", false}, {"nullable", false},
+                     {"referenceTable", "Customer"},
+                     {"referenceColumn", "id"}
+                 }
+             }},
+            {"relations", QVariantList{
+                 QVariantMap{
+                     {"column", "customerId"},
+                     {"referenceTable", "Customer"},
+                     {"referenceColumn", "id"},
+                     {"sourceCardinality", "0..*"},
+                     {"targetCardinality", "1"},
+                     {"identifying", false}
+                 }
+             }},
             {"proposed", false}
         }
     };
@@ -603,14 +682,14 @@ void QmlWorkflowTest::loadsNormalizationPage()
         findObjectWithProperty(
             pageObject,
             "text",
-            "Open Before Diagram")
+            "Open Before ER Model")
         != nullptr);
 
     QVERIFY(
         findObjectWithProperty(
             pageObject,
             "text",
-            "Open After Diagram")
+            "Open After ER Model")
         != nullptr);
 
     QVERIFY(
@@ -634,6 +713,20 @@ void QmlWorkflowTest::loadsNormalizationPage()
             "beforeDiagramWindow");
     QVERIFY(beforeWindow != nullptr);
     QVERIFY(!beforeWindow->property("visible").toBool());
+
+    QObject *beforeErModel =
+        findObjectWithProperty(
+            pageObject,
+            "objectName",
+            "beforeErModel");
+    QVERIFY(beforeErModel != nullptr);
+    QCOMPARE(
+        beforeErModel->property("tableCount").toInt(),
+        2);
+    QCOMPARE(
+        beforeErModel->property("relationshipCount").toInt(),
+        1);
+
     QVERIFY(QMetaObject::invokeMethod(
         pageObject,
         "openBeforeDiagram"));
@@ -653,6 +746,35 @@ void QmlWorkflowTest::loadsNormalizationPage()
         "openAfterDiagram"));
     QCoreApplication::processEvents();
     QVERIFY(afterWindow->property("visible").toBool());
+
+    QObject *afterErModel =
+        findObjectWithProperty(
+            pageObject,
+            "objectName",
+            "afterErModel");
+    QVERIFY(afterErModel != nullptr);
+    QCOMPARE(
+        afterErModel->property("tableCount").toInt(),
+        3);
+    QCOMPARE(
+        afterErModel->property("relationshipCount").toInt(),
+        2);
+
+    controller.onApplyNormalization();
+    controller.onAdvanceNormalization();
+    QCoreApplication::processEvents();
+    QCOMPARE(controller.selectedNormalizationForm(), QString("2NF"));
+    QCOMPARE(
+        afterErModel->property("tableCount").toInt(),
+        4);
+
+    controller.onResetNormalization();
+    QCoreApplication::processEvents();
+    QCOMPARE(controller.selectedNormalizationForm(), QString("1NF"));
+    QCOMPARE(
+        afterErModel->property("tableCount").toInt(),
+        3);
+
     afterWindow->setProperty("visible", false);
 }
 

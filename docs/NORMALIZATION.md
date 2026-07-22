@@ -20,9 +20,21 @@ Normal forms are ordered as `1NF`, `2NF`, `3NF`, `BCNF`, `4NF`, and `5NF`.
 - Previous Level and Next Level select an existing adjacent version or generate the missing adjacent form.
 - Activating an existing version changes application state only; it does not delete database tables.
 
-## Schema Diagrams
+## Entity-Relationship Models
 
-Open Before Diagram refreshes the original schema directly from the connected database. Open After Diagram refreshes either the validated migration preview or the active normalized version. A connected database without tables produces an explicit status message instead of an inactive diagram action.
+Open Before ER Model refreshes only the original source tables from the connected database. Open After ER Model shows the currently selected migration preview, a pending stored version switch, or the active normalized version. A pending version always takes precedence when the view refreshes, so moving from NF1 through NF5 or back to an earlier saved level updates the open After model without executing SQL or deleting data.
+
+Each entity lists all attributes and marks primary keys (PK), foreign keys (FK), unique attributes (UQ), and nullability. Relationship labels use Child.foreignKey -> Parent.referencedKey. The endpoints use Crow's Foot notation:
+
+- 0..*: zero or many child rows
+- 0..1: zero or one related row
+- 1: exactly one required related row
+- solid blue line: identifying relationship where the foreign key is part of the child primary key
+- dashed gray line: non-identifying relationship
+
+Cardinalities are derived from database constraints. SQLite uses table, foreign-key, and unique-index metadata. Migration previews derive the same metadata from PRIMARY KEY, FOREIGN KEY, REFERENCES, NOT NULL, and single-column UNIQUE constraints or indexes. When a driver cannot report uniqueness or nullability, ProteusManager displays the conservative optional/many relationship instead of claiming a stricter cardinality.
+
+A connected database without tables produces an explicit status message instead of an inactive ER-model action.
 
 ## Validation
 
