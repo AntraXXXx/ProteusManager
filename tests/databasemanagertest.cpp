@@ -48,6 +48,26 @@ QVariantMap findTable(
     return {};
 }
 
+QVariantMap findColumn(
+    const QVariantMap& table,
+    const QString& columnName)
+{
+    for (const QVariant& columnValue :
+         table.value("columns").toList())
+    {
+        const QVariantMap column =
+            columnValue.toMap();
+        if (column.value("name").toString().compare(
+                columnName,
+                Qt::CaseInsensitive) == 0)
+        {
+            return column;
+        }
+    }
+
+    return {};
+}
+
 }
 
 class DatabaseManagerTest : public QObject
@@ -280,7 +300,17 @@ void DatabaseManagerTest::buildsSchemaDiagramsWithRelations()
             "CREATE TABLE Customer ("
             "id INTEGER PRIMARY KEY, name TEXT);"
             "CREATE TABLE Address ("
-            "id INTEGER PRIMARY KEY, customerId INTEGER, city TEXT, "
+            "id INTEGER PRIMARY KEY, customerId INTEGER NOT NULL, city TEXT, "
+            "FOREIGN KEY(customerId) REFERENCES Customer(id));"
+            "CREATE TABLE CustomerProfile ("
+            "id INTEGER PRIMARY KEY, customerId INTEGER UNIQUE, bio TEXT, "
+            "FOREIGN KEY(customerId) REFERENCES Customer(id));"
+            "CREATE TABLE CustomerSettings ("
+            "customerId INTEGER PRIMARY KEY, theme TEXT, "
+            "FOREIGN KEY(customerId) REFERENCES Customer(id));"
+            "CREATE TABLE CustomerNote ("
+            "customerId INTEGER, sequence INTEGER, note TEXT, "
+            "PRIMARY KEY(customerId, sequence), "
             "FOREIGN KEY(customerId) REFERENCES Customer(id));"));
 
         const QVariantList before =
@@ -289,8 +319,17 @@ void DatabaseManagerTest::buildsSchemaDiagramsWithRelations()
             findTable(before, "Customer");
         const QVariantMap address =
             findTable(before, "Address");
+        const QVariantMap profile =
+            findTable(before, "CustomerProfile");
+        const QVariantMap settings =
+            findTable(before, "CustomerSettings");
+        const QVariantMap note =
+            findTable(before, "CustomerNote");
         QVERIFY(!customer.isEmpty());
         QVERIFY(!address.isEmpty());
+        QVERIFY(!profile.isEmpty());
+        QVERIFY(!settings.isEmpty());
+        QVERIFY(!note.isEmpty());
         QCOMPARE(address.value("relations").toList().size(), 1);
 
         const QVariantMap addressRelation =
@@ -301,10 +340,59 @@ void DatabaseManagerTest::buildsSchemaDiagramsWithRelations()
         QCOMPARE(
             addressRelation.value("referenceColumn").toString(),
             QString("id"));
+        QCOMPARE(
+            addressRelation.value("sourceCardinality").toString(),
+            QString("0..*"));
+        QCOMPARE(
+            addressRelation.value("targetCardinality").toString(),
+            QString("1"));
+        QVERIFY(!addressRelation.value("identifying").toBool());
+
+        const QVariantMap addressCustomerId =
+            findColumn(address, "customerId");
+        QVERIFY(!addressCustomerId.value("nullable").toBool());
+        QVERIFY(addressCustomerId.value("foreignKey").toBool());
+
+        const QVariantMap profileRelation =
+            profile.value("relations").toList().first().toMap();
+        QCOMPARE(
+            profileRelation.value("sourceCardinality").toString(),
+            QString("0..1"));
+        QCOMPARE(
+            profileRelation.value("targetCardinality").toString(),
+            QString("0..1"));
+        QVERIFY(!profileRelation.value("identifying").toBool());
+        QVERIFY(
+            findColumn(profile, "customerId")
+                .value("unique").toBool());
+
+        const QVariantMap settingsRelation =
+            settings.value("relations").toList().first().toMap();
+        QCOMPARE(
+            settingsRelation.value("sourceCardinality").toString(),
+            QString("0..1"));
+        QCOMPARE(
+            settingsRelation.value("targetCardinality").toString(),
+            QString("1"));
+        QVERIFY(settingsRelation.value("identifying").toBool());
+
+        const QVariantMap noteRelation =
+            note.value("relations").toList().first().toMap();
+        QCOMPARE(
+            noteRelation.value("sourceCardinality").toString(),
+            QString("0..*"));
+        QCOMPARE(
+            noteRelation.value("targetCardinality").toString(),
+            QString("1"));
+        QVERIFY(noteRelation.value("identifying").toBool());
+        QVERIFY(
+            !findColumn(note, "customerId")
+                 .value("unique").toBool());
 
         const QString migration =
             "CREATE TABLE CustomerPhone ("
-            "id INTEGER PRIMARY KEY, customerId INTEGER, phone TEXT, "
+            "id INTEGER PRIMARY KEY, "
+            "customerId INTEGER NOT NULL UNIQUE, phone TEXT, "
             "FOREIGN KEY(customerId) REFERENCES Customer(id));";
         const QVariantList after =
             manager.buildSchemaDiagramWithMigration(migration);
@@ -316,6 +404,15 @@ void DatabaseManagerTest::buildsSchemaDiagramsWithRelations()
         QCOMPARE(
             customerPhone.value("relations").toList().size(),
             1);
+        const QVariantMap phoneRelation =
+            customerPhone.value("relations")
+                .toList().first().toMap();
+        QCOMPARE(
+            phoneRelation.value("sourceCardinality").toString(),
+            QString("0..1"));
+        QCOMPARE(
+            phoneRelation.value("targetCardinality").toString(),
+            QString("1"));
     }
 
     removeConnection(connectionName);

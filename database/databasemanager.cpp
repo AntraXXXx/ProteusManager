@@ -147,16 +147,70 @@ QVariantMap columnEntry(
     const QString& name,
     const QString& type,
     bool primaryKey,
+    bool nullable,
+    bool unique,
     const QVariantMap& relation = {})
 {
     return {
         {"name", name},
         {"type", type},
         {"primaryKey", primaryKey},
+        {"nullable", nullable},
+        {"unique", unique},
         {"foreignKey", !relation.isEmpty()},
         {"referenceTable", relation.value("referenceTable")},
         {"referenceColumn", relation.value("referenceColumn")}
     };
+}
+
+void annotateRelationships(
+    QVariantList& columns,
+    QVariantList& relations)
+{
+    for (int relationIndex = 0;
+         relationIndex < relations.size();
+         ++relationIndex)
+    {
+        QVariantMap relation =
+            relations.at(relationIndex).toMap();
+
+        for (int columnIndex = 0;
+             columnIndex < columns.size();
+             ++columnIndex)
+        {
+            QVariantMap column =
+                columns.at(columnIndex).toMap();
+            if (column.value("name").toString().compare(
+                    relation.value("column").toString(),
+                    Qt::CaseInsensitive) != 0)
+            {
+                continue;
+            }
+
+            const bool identifying =
+                column.value("primaryKey").toBool();
+            const bool unique =
+                column.value("unique").toBool();
+            const bool nullable =
+                column.value("nullable", true).toBool();
+
+            relation["sourceCardinality"] =
+                unique ? "0..1" : "0..*";
+            relation["targetCardinality"] =
+                nullable ? "0..1" : "1";
+            relation["identifying"] = identifying;
+
+            column["foreignKey"] = true;
+            column["referenceTable"] =
+                relation.value("referenceTable");
+            column["referenceColumn"] =
+                relation.value("referenceColumn");
+            columns[columnIndex] = column;
+            break;
+        }
+
+        relations[relationIndex] = relation;
+    }
 }
 
 int tableIndex(const QVariantList& schema, const QString& tableName)
@@ -296,6 +350,24 @@ QVariantList parseCreatedTables(const QString& migrationSql)
         "^(?:CONSTRAINT\\s+" + identifier + "\\s+)?PRIMARY\\s+KEY\\s*"
         "\\(([^)]*)\\)",
         QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression tableUnique(
+        "^(?:CONSTRAINT\\s+" + identifier + "\\s+)?UNIQUE\\s*"
+        "\\(([^)]*)\\)",
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression createUniqueIndex(
+        "^CREATE\\s+UNIQUE\\s+INDEX\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?"
+        + identifier + "\\s+ON\\s+(" + identifier
+        + ")\\s*\\(([^)]*)\\)\\s*$",
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression inlinePrimaryKey(
+        "\\bPRIMARY\\s+KEY\\b",
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression inlineNotNull(
+        "\\bNOT\\s+NULL\\b",
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression inlineUnique(
+        "\\bUNIQUE\\b",
+        QRegularExpression::CaseInsensitiveOption);
 
     for (QString statement : sqlStatements(migrationSql))
     {
@@ -309,6 +381,7 @@ QVariantList parseCreatedTables(const QString& migrationSql)
         QVariantList columns;
         QVariantList relations;
         QSet<QString> tablePrimaryKeys;
+        QSet<QString> tableUniqueColumns;
         const QStringList definitions =
             splitTableDefinitions(createMatch.captured(2));
 
@@ -320,6 +393,22 @@ QVariantList parseCreatedTables(const QString& migrationSql)
             {
                 for (const QString& key : primaryMatch.captured(1).split(','))
                     tablePrimaryKeys.insert(cleanIdentifier(key).toLower());
+                continue;
+            }
+
+            const QRegularExpressionMatch uniqueMatch =
+                tableUnique.match(definition);
+            if (uniqueMatch.hasMatch())
+            {
+                const QStringList keys =
+                    uniqueMatch.captured(1).split(
+                        ',',
+                        Qt::SkipEmptyParts);
+                if (keys.size() == 1)
+                {
+                    tableUniqueColumns.insert(
+                        cleanIdentifier(keys.first()).toLower());
+                }
                 continue;
             }
 
@@ -356,42 +445,40 @@ QVariantList parseCreatedTables(const QString& migrationSql)
                 relations.append(relation);
             }
 
+            const bool primaryKey =
+                inlinePrimaryKey.match(suffix).hasMatch();
             columns.append(columnEntry(
                 name,
                 columnMatch.captured(2),
-                suffix.contains(
-                    QRegularExpression(
-                        "\\bPRIMARY\\s+KEY\\b",
-                        QRegularExpression::CaseInsensitiveOption)),
+                primaryKey,
+                !primaryKey
+                    && !inlineNotNull.match(suffix).hasMatch(),
+                primaryKey
+                    || inlineUnique.match(suffix).hasMatch(),
                 relation));
         }
 
         for (int i = 0; i < columns.size(); ++i)
         {
             QVariantMap column = columns.at(i).toMap();
-            if (tablePrimaryKeys.contains(
-                    column.value("name").toString().toLower()))
+            const QString columnKey =
+                column.value("name").toString().toLower();
+
+            if (tablePrimaryKeys.contains(columnKey))
             {
                 column["primaryKey"] = true;
-                columns[i] = column;
+                column["nullable"] = false;
+                if (tablePrimaryKeys.size() == 1)
+                    column["unique"] = true;
             }
 
-            for (const QVariant& relationValue : relations)
-            {
-                const QVariantMap relation = relationValue.toMap();
-                if (relation.value("column").toString().compare(
-                        column.value("name").toString(),
-                        Qt::CaseInsensitive) == 0)
-                {
-                    column["foreignKey"] = true;
-                    column["referenceTable"] =
-                        relation.value("referenceTable");
-                    column["referenceColumn"] =
-                        relation.value("referenceColumn");
-                    columns[i] = column;
-                }
-            }
+            if (tableUniqueColumns.contains(columnKey))
+                column["unique"] = true;
+
+            columns[i] = column;
         }
+
+        annotateRelationships(columns, relations);
 
         tables.append(QVariantMap{
             {"name", cleanIdentifier(createMatch.captured(1))},
@@ -399,6 +486,57 @@ QVariantList parseCreatedTables(const QString& migrationSql)
             {"relations", relations},
             {"proposed", true}
         });
+    }
+
+    for (QString statement : sqlStatements(migrationSql))
+    {
+        statement = stripLeadingSqlComments(statement);
+        const QRegularExpressionMatch indexMatch =
+            createUniqueIndex.match(statement.trimmed());
+        if (!indexMatch.hasMatch())
+            continue;
+
+        const QStringList indexedColumns =
+            indexMatch.captured(2).split(
+                ',',
+                Qt::SkipEmptyParts);
+        if (indexedColumns.size() != 1)
+            continue;
+
+        const int index = tableIndex(
+            tables,
+            cleanIdentifier(indexMatch.captured(1)));
+        if (index < 0)
+            continue;
+
+        QVariantMap table = tables.at(index).toMap();
+        QVariantList columns =
+            table.value("columns").toList();
+        QVariantList relations =
+            table.value("relations").toList();
+        const QString uniqueColumn =
+            cleanIdentifier(indexedColumns.first());
+
+        for (int columnIndex = 0;
+             columnIndex < columns.size();
+             ++columnIndex)
+        {
+            QVariantMap column =
+                columns.at(columnIndex).toMap();
+            if (column.value("name").toString().compare(
+                    uniqueColumn,
+                    Qt::CaseInsensitive) == 0)
+            {
+                column["unique"] = true;
+                columns[columnIndex] = column;
+                break;
+            }
+        }
+
+        annotateRelationships(columns, relations);
+        table["columns"] = columns;
+        table["relations"] = relations;
+        tables[index] = table;
     }
 
     return tables;
@@ -1125,6 +1263,39 @@ QVariantList DatabaseManager::buildSchemaDiagram()
                     relation);
             }
 
+            QSet<QString> uniqueColumns;
+            QSqlQuery indexList(
+                QString("PRAGMA index_list(%1)")
+                    .arg(quoteSqliteIdentifier(table)),
+                db);
+            while (indexList.next())
+            {
+                if (!indexList.value(2).toBool())
+                    continue;
+
+                const QString indexName =
+                    indexList.value(1).toString();
+                QSqlQuery indexInfo(
+                    QString("PRAGMA index_info(%1)")
+                        .arg(quoteSqliteIdentifier(indexName)),
+                    db);
+                QStringList indexedColumns;
+                while (indexInfo.next())
+                {
+                    const QString columnName =
+                        indexInfo.value(2).toString();
+                    if (!columnName.isEmpty())
+                        indexedColumns.append(columnName);
+                }
+
+                if (indexedColumns.size() == 1)
+                {
+                    uniqueColumns.insert(
+                        indexedColumns.first().toLower());
+                }
+            }
+
+            int primaryKeyCount = 0;
             QSqlQuery tableInfo(
                 QString("PRAGMA table_info(%1)")
                     .arg(quoteSqliteIdentifier(table)),
@@ -1134,11 +1305,36 @@ QVariantList DatabaseManager::buildSchemaDiagram()
             {
                 const QString name =
                     tableInfo.value(1).toString();
+                const bool primaryKey =
+                    tableInfo.value(5).toInt() > 0;
+                if (primaryKey)
+                    ++primaryKeyCount;
+
                 columns.append(columnEntry(
                     name,
                     tableInfo.value(2).toString(),
-                    tableInfo.value(5).toInt() > 0,
+                    primaryKey,
+                    !primaryKey
+                        && tableInfo.value(3).toInt() == 0,
+                    uniqueColumns.contains(name.toLower()),
                     relationByColumn.value(name.toLower())));
+            }
+
+            if (primaryKeyCount == 1)
+            {
+                for (int columnIndex = 0;
+                     columnIndex < columns.size();
+                     ++columnIndex)
+                {
+                    QVariantMap column =
+                        columns.at(columnIndex).toMap();
+                    if (!column.value("primaryKey").toBool())
+                        continue;
+
+                    column["unique"] = true;
+                    columns[columnIndex] = column;
+                    break;
+                }
             }
         }
         else
@@ -1175,6 +1371,21 @@ QVariantList DatabaseManager::buildSchemaDiagram()
                 foreignKeys.addBindValue(table);
                 foreignKeys.exec();
             }
+            else if (db.driverName().startsWith("QODBC"))
+            {
+                foreignKeys.prepare(
+                    "SELECT fk.COLUMN_NAME, pk.TABLE_NAME, "
+                    "pk.COLUMN_NAME "
+                    "FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc "
+                    "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE fk "
+                    "ON fk.CONSTRAINT_NAME = rc.CONSTRAINT_NAME "
+                    "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE pk "
+                    "ON pk.CONSTRAINT_NAME = rc.UNIQUE_CONSTRAINT_NAME "
+                    "AND pk.ORDINAL_POSITION = fk.ORDINAL_POSITION "
+                    "WHERE fk.TABLE_NAME = ?");
+                foreignKeys.addBindValue(table);
+                foreignKeys.exec();
+            }
 
             while (foreignKeys.next())
             {
@@ -1190,17 +1401,29 @@ QVariantList DatabaseManager::buildSchemaDiagram()
 
             const QSqlRecord record = db.record(table);
             const QSqlIndex primaryKey = db.primaryIndex(table);
+            const bool singleColumnPrimaryKey =
+                primaryKey.count() == 1;
 
             for (int i = 0; i < record.count(); ++i)
             {
                 const QSqlField field = record.field(i);
+                const bool isPrimaryKey =
+                    primaryKey.indexOf(field.name()) >= 0;
                 columns.append(columnEntry(
                     field.name(),
                     QString::fromUtf8(field.metaType().name()),
-                    primaryKey.indexOf(field.name()) >= 0,
-                    relationByColumn.value(field.name().toLower())));
+                    isPrimaryKey,
+                    !isPrimaryKey
+                        && field.requiredStatus()
+                               != QSqlField::Required,
+                    isPrimaryKey
+                        && singleColumnPrimaryKey,
+                    relationByColumn.value(
+                        field.name().toLower())));
             }
         }
+
+        annotateRelationships(columns, relations);
 
         schema.append(QVariantMap{
             {"name", table},

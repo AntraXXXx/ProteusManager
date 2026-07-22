@@ -36,7 +36,7 @@ Page {
         height: 720
         minimumWidth: 600
         minimumHeight: 420
-        title: "Schema Before Normalization"
+        title: "Entity-Relationship Model Before Normalization"
         color: "#eef2f7"
 
         onClosing: function(close) {
@@ -50,7 +50,7 @@ Page {
             spacing: 12
 
             Label {
-                text: "Schema Before Normalization"
+                text: "Entity-Relationship Model Before Normalization"
                 color: "#101828"
                 font.bold: true
                 font.pixelSize: 24
@@ -58,13 +58,22 @@ Page {
             }
 
             Label {
-                text: "PK = primary key    FK = foreign key"
+                text: "Original source version | PK = primary key | FK = foreign key | UQ = unique"
                 color: "#475467"
                 font.pixelSize: 13
                 Layout.fillWidth: true
             }
 
+            Label {
+                text: "Crow's Foot: 0..* = zero or many | 0..1 = zero or one | 1 = exactly one | solid blue = identifying | dashed gray = non-identifying"
+                color: "#475467"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
             SchemaDiagramView {
+                objectName: "beforeErModel"
                 schema: appController.normalizationBeforeSchema
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -81,7 +90,7 @@ Page {
         height: 720
         minimumWidth: 600
         minimumHeight: 420
-        title: "Schema After Normalization"
+        title: "Entity-Relationship Model After Normalization"
         color: "#eef2f7"
 
         onClosing: function(close) {
@@ -95,7 +104,7 @@ Page {
             spacing: 12
 
             Label {
-                text: "Schema After Normalization"
+                text: "Entity-Relationship Model After Normalization"
                 color: "#101828"
                 font.bold: true
                 font.pixelSize: 24
@@ -103,14 +112,26 @@ Page {
             }
 
             Label {
-                text: "Blue tables are proposed by the migration. PK = primary key, FK = foreign key."
+                text: appController.selectedNormalizationForm.length > 0
+                      ? "Selected version: " + appController.selectedNormalizationForm
+                        + " | Blue entities are proposed by the migration."
+                      : "Active version: " + appController.appliedNormalizationForm
                 color: "#475467"
                 font.pixelSize: 13
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
             }
 
+            Label {
+                text: "Crow's Foot: 0..* = zero or many | 0..1 = zero or one | 1 = exactly one | solid blue = identifying | dashed gray = non-identifying"
+                color: "#475467"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
             SchemaDiagramView {
+                objectName: "afterErModel"
                 schema: appController.normalizationAfterSchema
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -274,7 +295,7 @@ Page {
 
             Button {
                 objectName: "openBeforeDiagramButton"
-                text: "Open Before Diagram"
+                text: "Open Before ER Model"
                 enabled: appController.databaseConnected
                 font.pixelSize: 16
                 Layout.fillWidth: true
@@ -287,7 +308,7 @@ Page {
 
             Button {
                 objectName: "openAfterDiagramButton"
-                text: "Open After Diagram"
+                text: "Open After ER Model"
                 enabled: appController.databaseConnected
                          && appController.normalizationAfterSchema.length > 0
                          && (appController.normalizationReady
