@@ -96,3 +96,9 @@ Setup instructions are available in:
 # Project Status
 
 The project is currently under development.
+
+---
+
+# Development Process
+
+- [Extended waterfall model](docs/EXTENDED_WATERFALL.md)
