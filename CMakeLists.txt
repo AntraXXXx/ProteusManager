@@ -58,6 +58,8 @@ qt_add_executable(DataBaseManager
 
     database/databasemanager.h
     database/databasemanager.cpp
+    database/sqlsafetypolicy.h
+    database/sqlsafetypolicy.cpp
 
     utils/programminglanguage.h
     utils/programminglanguage.cpp
@@ -150,6 +152,7 @@ if(BUILD_TESTING)
     add_proteus_test(DatabaseManagerTest
         tests/databasemanagertest.cpp
         database/databasemanager.cpp
+        database/sqlsafetypolicy.cpp
     )
     target_link_libraries(DatabaseManagerTest PRIVATE
         Qt6::Sql
@@ -163,6 +166,7 @@ if(BUILD_TESTING)
     add_proteus_test(SqlValidationTest
         tests/sqlvalidationtest.cpp
         database/databasemanager.cpp
+        database/sqlsafetypolicy.cpp
     )
     target_link_libraries(SqlValidationTest PRIVATE
         Qt6::Sql
