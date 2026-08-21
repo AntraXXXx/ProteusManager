@@ -80,6 +80,10 @@ Setup instructions are available in:
 - [docs/AI_SETUP.md](docs/AI_SETUP.md)
 - [docs/CODE_GENERATION.md](docs/CODE_GENERATION.md)
 
+Architecture documentation:
+
+- [Architecture, UML, and sequence diagrams](docs/ARCHITECTURE.md)
+
 ---
 
 # System Requirements
@@ -96,3 +100,9 @@ Setup instructions are available in:
 # Project Status
 
 The project is currently under development.
+
+---
+
+# Development Process
+
+- [Extended waterfall model](docs/EXTENDED_WATERFALL.md)
