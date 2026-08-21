@@ -1,4 +1,5 @@
 #include "databasemanager.h"
+#include "sqlsafetypolicy.h"
 
 #include <QSqlDatabase>
 #include <QSqlDriver>
@@ -36,30 +37,6 @@ QString escapeTableIdentifier(const QSqlDatabase& db, const QString& tableName)
         return escaped;
 
     return quoteSqliteIdentifier(tableName);
-}
-
-QStringList sqlStatements(const QString& sql)
-{
-    return sql.split(
-        ";",
-        Qt::SkipEmptyParts);
-}
-
-QString stripLeadingSqlComments(QString statement)
-{
-    statement = statement.trimmed();
-
-    while (statement.startsWith("--"))
-    {
-        const int lineEnd = statement.indexOf('\n');
-        if (lineEnd == -1)
-            return {};
-
-        statement =
-            statement.mid(lineEnd + 1).trimmed();
-    }
-
-    return statement;
 }
 
 QString cleanIdentifier(QString identifier)
@@ -707,9 +684,11 @@ QVariantList parseCreatedTables(const QString& migrationSql)
         "\\bUNIQUE\\b",
         QRegularExpression::CaseInsensitiveOption);
 
-    for (QString statement : sqlStatements(migrationSql))
+    for (QString statement :
+         SqlSafetyPolicy::splitStatements(migrationSql))
     {
-        statement = stripLeadingSqlComments(statement);
+        statement =
+            SqlSafetyPolicy::stripLeadingComments(statement);
         const QRegularExpressionMatch createMatch =
             createTable.match(statement.trimmed());
 
@@ -835,9 +814,11 @@ QVariantList parseCreatedTables(const QString& migrationSql)
         });
     }
 
-    for (QString statement : sqlStatements(migrationSql))
+    for (QString statement :
+         SqlSafetyPolicy::splitStatements(migrationSql))
     {
-        statement = stripLeadingSqlComments(statement);
+        statement =
+            SqlSafetyPolicy::stripLeadingComments(statement);
         const QRegularExpressionMatch indexMatch =
             createUniqueIndex.match(statement.trimmed());
         if (!indexMatch.hasMatch())
@@ -1076,9 +1057,11 @@ QStringList migrationCopyErrors(
     QHash<QString, QSet<QString>> populatedColumns;
     QString copiedSourceExpressions;
 
-    for (QString statement : sqlStatements(migrationSql))
+    for (QString statement :
+         SqlSafetyPolicy::splitStatements(migrationSql))
     {
-        statement = stripLeadingSqlComments(statement);
+        statement =
+            SqlSafetyPolicy::stripLeadingComments(statement);
         const QRegularExpressionMatch match =
             insertSelect.match(statement.trimmed());
         if (!match.hasMatch())
@@ -1236,51 +1219,6 @@ QString firstEmptyCreatedTable(
     }
 
     return {};
-}
-
-QString incompatibleMigrationFeature(
-    const QString& driverName,
-    const QString& sql)
-{
-    QString pattern;
-
-    if (driverName == "QSQLITE")
-    {
-        pattern =
-            "\\b(CHARINDEX|STRING_SPLIT|SPLIT_PART|UNNEST|GENERATE_SERIES|CONCAT)\\s*\\("
-            "|\\bTOP\\s+\\d+\\b|\\bAUTO_INCREMENT\\b|\\bIDENTITY\\s*\\(";
-    }
-    else if (driverName.startsWith("QPSQL"))
-    {
-        pattern =
-            "\\b(INSTR|IFNULL|CHARINDEX|STRING_SPLIT)\\s*\\("
-            "|`|\\bAUTO_INCREMENT\\b|\\bIDENTITY\\s*\\(";
-    }
-    else if (driverName.startsWith("QMYSQL"))
-    {
-        pattern =
-            "\\b(CHARINDEX|STRING_SPLIT|SPLIT_PART|UNNEST)\\s*\\("
-            "|\\bTOP\\s+\\d+\\b|\\bIDENTITY\\s*\\(";
-    }
-    else if (driverName.startsWith("QODBC"))
-    {
-        pattern =
-            "\\b(INSTR|SUBSTR|STRPOS|SPLIT_PART|UNNEST)\\s*\\("
-            "|\\bLIMIT\\s+\\d+\\b|`|\\bAUTO_INCREMENT\\b|\\|\\|";
-    }
-
-    if (pattern.isEmpty())
-        return {};
-
-    const QRegularExpression incompatible(
-        pattern,
-        QRegularExpression::CaseInsensitiveOption);
-    const QRegularExpressionMatch match =
-        incompatible.match(sql);
-
-    return match.hasMatch()
-               ? match.captured(0)
-               : QString();
 }
 
 }
@@ -2231,127 +2169,13 @@ QVariantList DatabaseManager::buildSchemaDiagramWithMigration(
 bool DatabaseManager::isValidSql(
     const QString& sql)
 {
-    const QString trimmedSql =
-        sql.trimmed();
-
-    if (trimmedSql.isEmpty())
-        return false;
-
-    const QRegularExpression destructiveStatement(
-        "\\b(DROP|DELETE|TRUNCATE|UPDATE|INSERT|REPLACE|ATTACH|DETACH|VACUUM)\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    const QRegularExpression createTableStatement(
-        "^CREATE\\s+TABLE\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    const QRegularExpression createIndexStatement(
-        "^CREATE\\s+(UNIQUE\\s+)?INDEX\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    const QRegularExpression alterAddColumnStatement(
-        "^ALTER\\s+TABLE\\b[\\s\\S]*\\bADD\\s+COLUMN\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    bool hasValidStatement = false;
-
-    const QStringList statements =
-        trimmedSql.split(
-            ";",
-            Qt::SkipEmptyParts);
-
-    for (const QString& statement : statements)
-    {
-        const QString compactStatement =
-            statement.trimmed().simplified();
-
-        if (compactStatement.isEmpty())
-            continue;
-
-        if (destructiveStatement.match(compactStatement).hasMatch())
-            return false;
-
-        const bool isAllowedSchemaStatement =
-            createTableStatement.match(compactStatement).hasMatch()
-            || createIndexStatement.match(compactStatement).hasMatch()
-            || alterAddColumnStatement.match(compactStatement).hasMatch();
-
-        if (!isAllowedSchemaStatement)
-            return false;
-
-        hasValidStatement = true;
-    }
-
-    return hasValidStatement;
+    return SqlSafetyPolicy::isValidSchemaSql(sql);
 }
 
 bool DatabaseManager::isValidMigrationSql(
     const QString& sql) const
 {
-    if (sql.trimmed().isEmpty())
-        return false;
-
-    const QRegularExpression forbiddenStatement(
-        "\\b(DROP|DELETE|TRUNCATE|UPDATE|REPLACE|ATTACH|DETACH|VACUUM|BEGIN|COMMIT|ROLLBACK)\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    const QRegularExpression alterDropStatement(
-        "^ALTER\\s+TABLE\\b[\\s\\S]*\\bDROP\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    const QRegularExpression createTableStatement(
-        "^CREATE\\s+TABLE\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    const QRegularExpression createIndexStatement(
-        "^CREATE\\s+(UNIQUE\\s+)?INDEX\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    const QRegularExpression insertSelectStatement(
-        "^INSERT(?:\\s+OR\\s+IGNORE|\\s+IGNORE)?\\s+INTO\\b[\\s\\S]*\\bSELECT\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    const QRegularExpression commonTableExpressionInsertSelectStatement(
-        "^WITH(?:\\s+RECURSIVE)?\\b[\\s\\S]*\\bINSERT(?:\\s+OR\\s+IGNORE|\\s+IGNORE)?\\s+INTO\\b[\\s\\S]*\\bSELECT\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    const QRegularExpression alterSafeStatement(
-        "^ALTER\\s+TABLE\\b[\\s\\S]*\\b(ADD|RENAME)\\b",
-        QRegularExpression::CaseInsensitiveOption);
-
-    bool hasStatement = false;
-
-    for (QString statement : sqlStatements(sql))
-    {
-        statement =
-            stripLeadingSqlComments(statement);
-
-        const QString compact =
-            statement.simplified();
-
-        if (compact.isEmpty())
-            continue;
-
-        if (forbiddenStatement.match(compact).hasMatch()
-            || alterDropStatement.match(compact).hasMatch())
-        {
-            return false;
-        }
-
-        const bool allowed =
-            createTableStatement.match(compact).hasMatch()
-            || createIndexStatement.match(compact).hasMatch()
-            || insertSelectStatement.match(compact).hasMatch()
-            || commonTableExpressionInsertSelectStatement.match(compact).hasMatch()
-            || alterSafeStatement.match(compact).hasMatch();
-
-        if (!allowed)
-            return false;
-
-        hasStatement = true;
-    }
-
-    return hasStatement;
+    return SqlSafetyPolicy::isValidMigrationSql(sql);
 }
 
 bool DatabaseManager::validateMigrationPreview(
@@ -2409,7 +2233,7 @@ bool DatabaseManager::validateMigrationPreview(
         schemaHasRows(db, sourceSchema);
 
     const QString incompatibleFeature =
-        incompatibleMigrationFeature(
+        SqlSafetyPolicy::incompatibleFeature(
             db.driverName(),
             migrationSql);
     if (!incompatibleFeature.isEmpty())
@@ -2481,10 +2305,12 @@ bool DatabaseManager::validateMigrationPreview(
                 previewValid = true;
 
                 for (QString statement :
-                     sqlStatements(migrationSql))
+                     SqlSafetyPolicy::splitStatements(
+                         migrationSql))
                 {
                     statement =
-                        stripLeadingSqlComments(statement);
+                        SqlSafetyPolicy::stripLeadingComments(
+                            statement);
                     if (statement.isEmpty())
                         continue;
 
@@ -2566,9 +2392,11 @@ bool DatabaseManager::validateMigrationPreview(
         return false;
     }
 
-    for (QString statement : sqlStatements(migrationSql))
+    for (QString statement :
+         SqlSafetyPolicy::splitStatements(migrationSql))
     {
-        statement = stripLeadingSqlComments(statement);
+        statement =
+            SqlSafetyPolicy::stripLeadingComments(statement);
         if (statement.isEmpty())
             continue;
 
@@ -2675,10 +2503,11 @@ bool DatabaseManager::executeMigration(
         return false;
     }
 
-    for (QString statement : sqlStatements(migrationSql))
+    for (QString statement :
+         SqlSafetyPolicy::splitStatements(migrationSql))
     {
         statement =
-            stripLeadingSqlComments(statement);
+            SqlSafetyPolicy::stripLeadingComments(statement);
 
         if (statement.isEmpty())
             continue;
